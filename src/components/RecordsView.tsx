@@ -46,11 +46,15 @@ export function RecordsView({
   onAdd,
   onEdit,
   onLoadSample,
+  sampleMode,
+  onClearAll,
 }: {
   expenses: Expense[]
   onAdd: (raw: string, source: InputSource) => void
   onEdit: (e: Expense) => void
   onLoadSample?: () => void
+  sampleMode?: boolean
+  onClearAll?: () => void
 }) {
   const [limit, setLimit] = useState(40)
   const visible = expenses.slice(0, limit)
@@ -82,6 +86,15 @@ export function RecordsView({
         </div>
       ) : (
         <div className="space-y-4">
+          {sampleMode && (
+            <div className="rounded-2xl px-4 py-3 flex items-center gap-3 bg-[#ff9f0a]/10 border border-[#ff9f0a]/25">
+              <span className="text-[18px] shrink-0">🧪</span>
+              <div className="flex-1 min-w-0 text-[13px] text-[#86868b] leading-snug">
+                <span className="font-medium text-[#1d1d1f] dark:text-[#f5f5f7]">这是示例数据</span>，仅供预览体验，可随时清空
+              </div>
+              <button onClick={onClearAll} className="text-[13px] font-semibold text-[#ff375f] shrink-0 px-2 py-1">清空</button>
+            </div>
+          )}
           {groups.map(([day, items]) => {
             const total = items.reduce((s, e) => s + e.amount, 0)
             return (

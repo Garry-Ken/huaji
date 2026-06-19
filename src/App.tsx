@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Expense, InputSource } from './types'
 import { parseExpense } from './lib/parser'
-import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid } from './lib/storage'
+import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid, hasSampleFlag, setSampleFlag, clearSampleFlag } from './lib/storage'
 import { generateSample } from './lib/sampleData'
 import { RecordsView } from './components/RecordsView'
 import { Dashboard } from './components/Dashboard'
@@ -29,6 +29,7 @@ export default function App() {
   const [editingNew, setEditingNew] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [dark, setDark] = useState(false)
+  const [sampleMode, setSampleMode] = useState(hasSampleFlag())
   const { status, daysLeft, openPaywall } = useEntitlement()
 
   // 初始化：主题 + 数据（首次注入示例）
@@ -68,13 +69,18 @@ export default function App() {
     const data = sortByTime(generateSample())
     setExpenses(data)
     persist(data)
+    setSampleFlag()
+    setSampleMode(true)
     showToast('已载入示例数据')
   }
 
-  // 清空全部记录（管理员面板用，便于清理测试数据）
+  // 清空全部记录（示例提示条 / 管理员面板共用）
   const clearAllData = () => {
+    if (!window.confirm('确定清空全部记录？此操作不可撤销。')) return
     setExpenses([])
     persist([])
+    clearSampleFlag()
+    setSampleMode(false)
     showToast('已清空全部记录')
   }
 
@@ -159,7 +165,7 @@ export default function App() {
 
       {/* 内容 */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-5 pb-28 sm:pb-10">
-        {tab === 'records' && <RecordsView expenses={expenses} onAdd={addFromText} onEdit={(e) => { setEditing(e); setEditingNew(false) }} onLoadSample={loadSample} />}
+        {tab === 'records' && <RecordsView expenses={expenses} onAdd={addFromText} onEdit={(e) => { setEditing(e); setEditingNew(false) }} onLoadSample={loadSample} sampleMode={sampleMode} onClearAll={clearAllData} />}
         {tab === 'stats' && <Dashboard expenses={expenses} onGotoHealth={() => setTab('health')} />}
         {tab === 'health' && <HealthPanel expenses={expenses} />}
         {tab === 'account' && <AccountView expenses={expenses} onToast={showToast} onClearData={clearAllData} />}

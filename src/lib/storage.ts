@@ -35,6 +35,18 @@ export function markSeeded(): void {
   localStorage.setItem(SEED_FLAG, '1')
 }
 
+// 示例数据标记：用户手动“载入示例”后置位，用于在记账页显示“这是示例数据·清空”提示条
+const SAMPLE_FLAG = 'huaji.sample.v1'
+export function hasSampleFlag(): boolean {
+  return localStorage.getItem(SAMPLE_FLAG) === '1'
+}
+export function setSampleFlag(): void {
+  try { localStorage.setItem(SAMPLE_FLAG, '1') } catch { /* ignore */ }
+}
+export function clearSampleFlag(): void {
+  try { localStorage.removeItem(SAMPLE_FLAG) } catch { /* ignore */ }
+}
+
 /** 由解析草稿生成正式记录 */
 export function makeExpense(parse: ParseResult, rawText: string, source: InputSource): Expense {
   const now = Date.now()

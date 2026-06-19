@@ -131,7 +131,7 @@ export function AccountView({ expenses, onToast, onClearData }: { expenses: Expe
               <button onClick={() => { ent.resetAll(); onToast('已重置为免费') }} className="btn-ghost justify-center text-[13px]">重置为免费</button>
             </div>
             <button
-              onClick={() => { if (window.confirm('确定清空全部消费记录？此操作不可撤销。')) onClearData() }}
+              onClick={onClearData}
               className="btn-ghost w-full justify-center text-[13px] mt-2 !text-[#ff375f]"
             >
               清空全部记录
