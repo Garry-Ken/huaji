@@ -4,6 +4,9 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  # 网页构建用不到 electron / 桌面打包，跳过其二进制下载，避免 Netlify 安装又慢又易失败
+  ELECTRON_SKIP_BINARY_DOWNLOAD = "1"
+  PUPPETEER_SKIP_DOWNLOAD = "1"
 
 # SPA 兜底：未知路由回到 index.html（download.html 等真实文件优先匹配，不受影响）
 [[redirects]]
