@@ -1,0 +1,82 @@
+name: 出安装包
+
+# 触发方式：① 在 Actions 页面点「Run workflow」手动跑；② 推送 v* 标签
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 / Release 标签（如 v0.1.0）'
+        default: 'v0.1.0'
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # 允许创建 Release 并上传安装包
+
+jobs:
+  # —— 桌面：Mac (.dmg) + Windows (.exe) ——
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: node scripts/gen-icon.mjs
+      - run: npm run build
+      - run: npx electron-builder --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.exe
+
+  # —— 安卓 (.apk) ——
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm install
+      - run: npm run build
+      - run: npx cap add android
+      - run: npx cap sync android
+      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk huaji-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: huaji-android.apk
+
+  # —— 汇总，统一发到一个 Release ——
+  release:
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: 收集安装包并规范文件名
+        run: |
+          mkdir -p out
+          find artifacts -name '*.dmg' -exec cp {} out/huaji-mac.dmg \; || true
+          find artifacts -name '*.exe' -exec cp {} out/huaji-win.exe \; || true
+          find artifacts -name '*.apk' -exec cp {} out/huaji-android.apk \; || true
+          ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          name: 花迹 ${{ github.event.inputs.version || github.ref_name }}
+          files: out/*
