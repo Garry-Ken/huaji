@@ -14,6 +14,7 @@
     "android:sync": "npm run build && cap sync android"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
@@ -38,7 +39,10 @@
     "appId": "app.huaji.tracker",
     "productName": "花迹",
     "artifactName": "huaji-${os}.${ext}",
-    "files": ["dist/**/*", "electron/**/*"],
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
