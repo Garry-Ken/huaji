@@ -1,0 +1,20 @@
+{
+  "name": "花迹 · 智能记账",
+  "short_name": "花迹",
+  "description": "一句话智能记账，自动结构化分类、饮食健康分析与多周期可视化。",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fbfbfd",
+  "theme_color": "#0a84ff",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

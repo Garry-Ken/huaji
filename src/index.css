@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+@layer base {
+  body {
+    @apply antialiased text-[#1d1d1f] bg-[#fbfbfd] dark:text-[#f5f5f7] dark:bg-black transition-colors duration-300;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  /* iOS 风毛玻璃 */
+  .glass {
+    @apply bg-white/70 dark:bg-[#1c1c1e]/70 backdrop-blur-[40px] saturate-[1.8];
+  }
+  .glass-card {
+    @apply bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-[24px] border border-[#00000010] dark:border-[#ffffff12];
+  }
+
+  /* 安全区适配（iPhone 刘海/底部条） */
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+  .card {
+    @apply rounded-3xl bg-white dark:bg-[#1c1c1e] shadow-apple border border-[#00000008] dark:border-[#ffffff0d];
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-all;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-[15px] font-semibold transition-all duration-200;
+    @apply bg-[#0a84ff] hover:bg-[#0a84ff]/90 text-white active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100;
+    box-shadow: 0 4px 16px rgba(10, 132, 255, 0.3);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-[14px] font-medium transition-all duration-200;
+    @apply bg-[#f2f2f7] hover:bg-[#e5e5ea] text-[#1d1d1f] dark:bg-[#2c2c2e] dark:hover:bg-[#3a3a3c] dark:text-[#f5f5f7] active:scale-95;
+  }
+
+  .input-bare {
+    @apply w-full bg-transparent outline-none resize-none placeholder:text-[#86868b];
+  }
+
+  .seg {
+    @apply flex items-center gap-1 rounded-full p-1 bg-[#f2f2f7] dark:bg-[#2c2c2e] text-[13px] font-medium;
+  }
+  .seg-item {
+    @apply px-3 py-1.5 rounded-full transition-all cursor-pointer text-[#86868b] whitespace-nowrap;
+  }
+  .seg-item-active {
+    @apply bg-white dark:bg-[#48484a] text-[#1d1d1f] dark:text-white shadow-sm;
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  @keyframes pop-in {
+    0% { opacity: 0; transform: translateY(8px) scale(0.98); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .animate-pop { animation: pop-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.45); }
+    70% { box-shadow: 0 0 0 12px rgba(255, 59, 48, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+  }
+  .animate-mic { animation: pulse-ring 1.4s infinite; }
+}

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>下载花迹 · 智能记账</title>
+  <meta name="description" content="花迹 · 一句话智能记账。下载安卓 / 苹果 / Mac 版。" />
+  <style>
+    :root{
+      --bg:#fbfbfd; --fg:#1d1d1f; --sub:#86868b; --card:#ffffff;
+      --line:rgba(0,0,0,.08); --tint:#0a84ff; --soft:#f5f5f7;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{ --bg:#000; --fg:#f5f5f7; --sub:#86868b; --card:#1c1c1e; --line:rgba(255,255,255,.1); --soft:#1c1c1e; }
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--fg);
+      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Segoe UI",Roboto,sans-serif;
+      -webkit-font-smoothing:antialiased;}
+    .wrap{max-width:720px;margin:0 auto;padding:48px 20px 64px}
+    .hero{text-align:center;margin-bottom:36px}
+    .logo{width:76px;height:76px;border-radius:22px;display:inline-flex;align-items:center;justify-content:center;
+      background:linear-gradient(135deg,#0a84ff,#30d158);box-shadow:0 8px 30px rgba(10,132,255,.3);margin-bottom:18px}
+    h1{font-size:34px;letter-spacing:-.02em;margin:0 0 8px}
+    .tag{color:var(--sub);font-size:16px;margin:0}
+    .ver{display:inline-block;margin-top:12px;font-size:12px;color:var(--sub);background:var(--soft);
+      padding:4px 12px;border-radius:999px;border:1px solid var(--line)}
+    .reco{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:24px;margin:28px 0;
+      box-shadow:0 4px 24px rgba(0,0,0,.05);text-align:center}
+    .reco .badge{font-size:12px;color:var(--tint);font-weight:600;margin-bottom:6px}
+    .reco .recoName{font-size:20px;font-weight:600;margin-bottom:16px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:16px;font-weight:600;
+      padding:14px 28px;border-radius:999px;border:0;cursor:pointer;text-decoration:none;
+      background:var(--tint);color:#fff;box-shadow:0 4px 16px rgba(10,132,255,.3);transition:transform .15s,opacity .15s}
+    .btn:active{transform:scale(.97)}
+    .btn.sec{background:var(--soft);color:var(--fg);box-shadow:none;border:1px solid var(--line)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:560px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;
+      display:flex;flex-direction:column;gap:6px}
+    .card.hot{border-color:var(--tint);box-shadow:0 0 0 3px rgba(10,132,255,.12)}
+    .card .ico{width:40px;height:40px;color:var(--fg)}
+    .card .nm{font-size:17px;font-weight:600;margin-top:4px}
+    .card .sl{font-size:13px;color:var(--sub);min-height:34px}
+    .card .act{margin-top:8px}
+    .hint{font-size:12px;color:var(--sub);margin-top:8px;line-height:1.5}
+    .note{margin-top:36px;padding:16px 18px;background:var(--soft);border:1px solid var(--line);border-radius:16px;
+      font-size:13px;color:var(--sub);line-height:1.6}
+    .foot{text-align:center;color:var(--sub);font-size:12px;margin-top:40px;line-height:1.8}
+    a{color:var(--tint)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="logo">
+        <svg width="40" height="40" viewBox="0 0 64 64" fill="none">
+          <path d="M16 42c4-2 6-9 8-9s3 6 6 6 6-14 10-14" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="44" cy="22" r="3.4" fill="#fff"/>
+        </svg>
+      </div>
+      <h1>花迹 · 智能记账</h1>
+      <p class="tag">一句话记账，自动分类 · 饮食健康分析 · 多周期可视化</p>
+      <div class="ver" id="ver">v0.1.0</div>
+    </div>
+
+    <div class="reco" id="reco" style="display:none">
+      <div class="badge" id="recoBadge">已为你识别系统</div>
+      <div class="recoName" id="recoName"></div>
+      <a class="btn" id="recoBtn" href="#"></a>
+      <div class="hint" id="recoHint"></div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <div class="note">
+      📦 <b>安装包来自 GitHub Releases。</b> 在本页脚本里把 <code>GH</code> 改成你的「用户名/仓库名」后，GitHub Actions 跑完会自动把
+      <code>huaji-mac.dmg / huaji-win.exe / huaji-android.apk</code> 发到最新 Release，下载按钮自动指向。<br>
+      iOS 不支持直链安装，需走 <b>TestFlight</b> 或 App Store。
+    </div>
+
+    <div class="foot">
+      花迹 · 本地优先，数据存在你自己的设备<br>
+      © 2026 花迹
+    </div>
+  </div>
+
+  <script>
+    // ============ 配置：把 GH 换成你的「用户名/仓库名」 ============
+    const GH = 'YOUR_GH_USER/YOUR_REPO';   // ⛳️ 例如 garryken/huaji
+    const rel = (name) => `https://github.com/${GH}/releases/latest/download/${name}`;
+    const RELEASES = {
+      version: 'v0.1.0',
+      android: rel('huaji-android.apk'),   // GitHub Actions 自动产出并发到 Releases
+      mac:     rel('huaji-mac.dmg'),
+      windows: rel('huaji-win.exe'),
+      iosTestFlight: 'https://testflight.apple.com/join/XXXXXX', // ⛳️ 有了再换；没有就显示「即将上线」
+    };
+    // ============================================================
+
+    const APPLE = '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 13.5c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.82-.81-3-.79-1.54.02-2.96.9-3.75 2.28-1.6 2.78-.41 6.89 1.15 9.15.76 1.1 1.66 2.34 2.85 2.3 1.14-.05 1.57-.74 2.95-.74 1.38 0 1.77.74 2.98.71 1.23-.02 2.01-1.12 2.76-2.23.87-1.27 1.23-2.5 1.25-2.57-.03-.01-2.4-.92-2.42-3.66ZM16.43 6.69c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.66 1.37-.58.68-1.09 1.76-.95 2.8 1.01.08 2.04-.51 2.67-1.28Z"/></svg>';
+    const ANDROID = '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 9h12v7a1 1 0 0 1-1 1h-1v3a1 1 0 1 1-2 0v-3h-2v3a1 1 0 1 1-2 0v-3H9a1 1 0 0 1-1-1V9Zm-2 .5a1 1 0 0 1 2 0v5a1 1 0 1 1-2 0v-5Zm14 0a1 1 0 0 1 2 0v5a1 1 0 1 1-2 0v-5ZM7.5 8a4.5 4.5 0 0 1 9 0h-9Zm2-2.6.7 1.1m4.6-1.1-.7 1.1" stroke="currentColor" stroke-width="0"/><circle cx="9.5" cy="6" r=".7" fill="var(--bg)"/><circle cx="14.5" cy="6" r=".7" fill="var(--bg)"/></svg>';
+    const WIN = '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 11 4.3v7.2H3V5.5Zm0 7.5h8v7.2L3 19V13Zm9-9 9-1.3v8.3h-9V4Zm0 9h9v8.3L12 20v-7Z"/></svg>';
+
+    const PLATFORMS = [
+      { id:'android', name:'安卓 Android', icon:ANDROID, sub:'下载 APK 直接安装', kind:'download', href:RELEASES.android,
+        file:'huaji-0.1.0.apk', hint:'安装时如提示「未知来源」，在系统设置里允许即可。' },
+      { id:'ios', name:'苹果 iPhone / iPad', icon:APPLE, sub:'通过 TestFlight 安装', kind:'external', href:RELEASES.iosTestFlight,
+        hint:'iOS 不支持直链安装，需用 TestFlight（免费）或上架 App Store。' },
+      { id:'mac', name:'Mac', icon:APPLE, sub:'下载 .dmg 安装', kind:'download', href:RELEASES.mac,
+        file:'huaji-0.1.0.dmg', hint:'未签名版首次打开：右键图标 →「打开」即可绕过验证。' },
+      { id:'windows', name:'Windows', icon:WIN, sub:'下载 .exe 安装', kind:'download', href:RELEASES.windows,
+        file:'huaji-0.1.0-setup.exe', hint:'若 SmartScreen 拦截：点「更多信息 → 仍要运行」。' },
+    ];
+
+    function detect(){
+      const ua = navigator.userAgent;
+      const uad = navigator.userAgentData;
+      if (/android/i.test(ua)) return 'android';
+      if (/iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return 'ios';
+      if ((uad && uad.platform === 'macOS') || /mac os x|macintosh/i.test(ua)) return 'mac';
+      if ((uad && uad.platform === 'Windows') || /windows/i.test(ua)) return 'windows';
+      return '';
+    }
+
+    const cur = detect();
+    const byId = Object.fromEntries(PLATFORMS.map(p => [p.id, p]));
+    // TestFlight 链接还没填时（含 XXXX），iOS 显示「即将上线」，你无需操作
+    const soon = (p) => p.kind === 'external' && /XXXX/i.test(p.href);
+
+    // 推荐区
+    if (cur && byId[cur]) {
+      const p = byId[cur];
+      document.getElementById('reco').style.display = 'block';
+      document.getElementById('recoName').textContent = '花迹 for ' + p.name;
+      const b = document.getElementById('recoBtn');
+      if (soon(p)) {
+        b.textContent = '即将上线（TestFlight）';
+        b.removeAttribute('href'); b.style.opacity = '.5'; b.style.pointerEvents = 'none';
+      } else {
+        b.textContent = p.kind === 'download' ? '下载安装' : '前往安装';
+        b.href = p.href;
+        if (p.kind === 'download') b.setAttribute('download', '');
+        else { b.target = '_blank'; b.rel = 'noreferrer'; }
+      }
+      document.getElementById('recoHint').textContent = p.hint;
+    }
+
+    // 全部平台卡
+    const grid = document.getElementById('grid');
+    for (const p of PLATFORMS) {
+      const dl = soon(p)
+        ? `<span class="btn sec act" style="opacity:.5;pointer-events:none">即将上线</span>`
+        : p.kind === 'download'
+          ? `<a class="btn sec act" href="${p.href}" download>下载</a>`
+          : `<a class="btn sec act" href="${p.href}" target="_blank" rel="noreferrer">TestFlight</a>`;
+      const card = document.createElement('div');
+      card.className = 'card' + (p.id === cur ? ' hot' : '');
+      card.innerHTML = `${p.icon}<div class="nm">${p.name}</div><div class="sl">${p.sub}</div>${dl}<div class="hint">${p.hint}</div>`;
+      grid.appendChild(card);
+    }
+
+    document.getElementById('ver').textContent = RELEASES.version;
+  </script>
+</body>
+</html>

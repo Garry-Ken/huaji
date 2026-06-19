@@ -1,0 +1,15 @@
+# 依赖与产物（不要提交到 GitHub）
+node_modules
+dist
+release
+build/icon.png
+
+# 原生工程：CI 里自动生成，不提交
+android
+ios
+
+# 杂项
+.DS_Store
+*.log
+.vite
+npm-debug.log*
