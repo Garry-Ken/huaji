@@ -45,10 +45,12 @@ export function RecordsView({
   expenses,
   onAdd,
   onEdit,
+  onLoadSample,
 }: {
   expenses: Expense[]
   onAdd: (raw: string, source: InputSource) => void
   onEdit: (e: Expense) => void
+  onLoadSample?: () => void
 }) {
   const [limit, setLimit] = useState(40)
   const visible = expenses.slice(0, limit)
@@ -71,7 +73,12 @@ export function RecordsView({
       {expenses.length === 0 ? (
         <div className="card p-10 text-center text-[#86868b]">
           <div className="text-[40px] mb-2">🧾</div>
-          还没有记录，试着在上面记一笔吧
+          <div>还没有记录，试着在上面记一笔吧</div>
+          {onLoadSample && (
+            <button onClick={onLoadSample} className="btn-ghost mt-4 text-[13px]">
+              先载入示例数据看看效果
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

@@ -79,4 +79,12 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
           name: 花迹 ${{ github.event.inputs.version || github.ref_name }}
+          # 固定中性发布说明，避免把内部提交信息暴露到公开 Release 页
+          body: |
+            花迹 ${{ github.event.inputs.version || github.ref_name }}
+
+            下载对应平台安装包见下方 Assets：
+            - Android：huaji-android.apk
+            - macOS：huaji-mac.dmg
+            - Windows：huaji-win.exe
           files: out/*

@@ -38,7 +38,8 @@ export default function App() {
     setDark(saved ? saved === 'dark' : !!prefersDark)
 
     let data = load()
-    if (data.length === 0 && !hasSeeded()) {
+    // 仅开发环境注入示例数据；正式安装包 / 网页首次启动是干净空表
+    if (import.meta.env.DEV && data.length === 0 && !hasSeeded()) {
       data = generateSample()
       persist(data)
       markSeeded()
@@ -60,6 +61,21 @@ export default function App() {
     const sorted = sortByTime(next)
     setExpenses(sorted)
     persist(sorted)
+  }
+
+  // 按需载入示例数据（空表时“看看效果”入口）
+  const loadSample = () => {
+    const data = sortByTime(generateSample())
+    setExpenses(data)
+    persist(data)
+    showToast('已载入示例数据')
+  }
+
+  // 清空全部记录（管理员面板用，便于清理测试数据）
+  const clearAllData = () => {
+    setExpenses([])
+    persist([])
+    showToast('已清空全部记录')
   }
 
   const addFromText = (raw: string, source: InputSource) => {
@@ -143,10 +159,10 @@ export default function App() {
 
       {/* 内容 */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-5 pb-28 sm:pb-10">
-        {tab === 'records' && <RecordsView expenses={expenses} onAdd={addFromText} onEdit={(e) => { setEditing(e); setEditingNew(false) }} />}
+        {tab === 'records' && <RecordsView expenses={expenses} onAdd={addFromText} onEdit={(e) => { setEditing(e); setEditingNew(false) }} onLoadSample={loadSample} />}
         {tab === 'stats' && <Dashboard expenses={expenses} onGotoHealth={() => setTab('health')} />}
         {tab === 'health' && <HealthPanel expenses={expenses} />}
-        {tab === 'account' && <AccountView expenses={expenses} onToast={showToast} />}
+        {tab === 'account' && <AccountView expenses={expenses} onToast={showToast} onClearData={clearAllData} />}
       </main>
 
       {/* 移动端底部导航 */}

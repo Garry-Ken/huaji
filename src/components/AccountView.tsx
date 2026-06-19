@@ -33,9 +33,21 @@ function downloadCSV(expenses: Expense[]) {
   URL.revokeObjectURL(url)
 }
 
-export function AccountView({ expenses, onToast }: { expenses: Expense[]; onToast: (m: string) => void }) {
+export function AccountView({ expenses, onToast, onClearData }: { expenses: Expense[]; onToast: (m: string) => void; onClearData: () => void }) {
   const ent = useEntitlement()
   const { status, isPro, daysLeft, aiEnhance, setAiEnhance, openPaywall } = ent
+
+  // 管理员面板：正式版默认隐藏，连点底部版本号 7 次开启（开发环境默认展开）
+  const [adminOpen, setAdminOpen] = useState(import.meta.env.DEV)
+  const [, setTaps] = useState(0)
+  const revealAdmin = () => {
+    if (adminOpen) return
+    setTaps((t) => {
+      const n = t + 1
+      if (n === 7) { setAdminOpen(true); onToast('已开启管理员模式') }
+      return n
+    })
+  }
 
   const statusMeta =
     status === 'pro'
@@ -106,23 +118,31 @@ export function AccountView({ expenses, onToast }: { expenses: Expense[]; onToas
         <Row icon={<DownloadIcon size={20} />} title="导出 CSV" sub={`当前 ${expenses.length} 条记录`} locked={!isPro} onClick={gated('数据导出是 Pro 功能', () => { downloadCSV(expenses); onToast('已导出 CSV') })} />
       </div>
 
-      {/* 管理员发码：用户付款后用这里生成兑换码发给他 */}
-      <MintCodes onToast={onToast} />
+      {/* 管理员面板：正式用户不可见（连点下方版本号 7 次开启） */}
+      {adminOpen && (
+        <>
+          <MintCodes onToast={onToast} />
+          <div className="card p-4">
+            <div className="text-[12px] text-[#86868b] mb-2.5">🧪 管理员调试 · 正式用户看不到</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => { ent.startTrial(); onToast('已开始 7 天试用') }} className="btn-ghost justify-center text-[13px]">开始试用</button>
+              <button onClick={() => { ent.expireTrial(); onToast('已模拟试用到期') }} className="btn-ghost justify-center text-[13px]">模拟试用到期</button>
+              <button onClick={() => { ent.subscribe('annual'); onToast('已开通 Pro 年度（演示）') }} className="btn-ghost justify-center text-[13px]">模拟订阅</button>
+              <button onClick={() => { ent.resetAll(); onToast('已重置为免费') }} className="btn-ghost justify-center text-[13px]">重置为免费</button>
+            </div>
+            <button
+              onClick={() => { if (window.confirm('确定清空全部消费记录？此操作不可撤销。')) onClearData() }}
+              className="btn-ghost w-full justify-center text-[13px] mt-2 !text-[#ff375f]"
+            >
+              清空全部记录
+            </button>
+          </div>
+        </>
+      )}
 
-      {/* 演示控制 */}
-      <div className="card p-4">
-        <div className="text-[12px] text-[#86868b] mb-2.5">🧪 演示控制（生产环境会移除）</div>
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => { ent.startTrial(); onToast('已开始 7 天试用') }} className="btn-ghost justify-center text-[13px]">开始试用</button>
-          <button onClick={() => { ent.expireTrial(); onToast('已模拟试用到期') }} className="btn-ghost justify-center text-[13px]">模拟试用到期</button>
-          <button onClick={() => { ent.subscribe('annual'); onToast('已开通 Pro 年度（演示）') }} className="btn-ghost justify-center text-[13px]">模拟订阅</button>
-          <button onClick={() => { ent.resetAll(); onToast('已重置为免费') }} className="btn-ghost justify-center text-[13px]">重置为免费</button>
-        </div>
-      </div>
-
-      <div className="text-center text-[12px] text-[#86868b] py-2">
-        花迹 v0.1 · 本地优先，数据存于本机
-      </div>
+      <button onClick={revealAdmin} className="block w-full text-center text-[12px] text-[#86868b] py-2">
+        花迹 v0.1.1 · 本地优先，数据存于本机
+      </button>
     </div>
   )
 }
