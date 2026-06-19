@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA 兜底：未知路由回到 index.html（download.html 等真实文件优先匹配，不受影响）
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
