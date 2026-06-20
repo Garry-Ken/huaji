@@ -93,11 +93,11 @@ export function EditSheet({
         </div>
 
         {/* 标题 */}
-        <label className="block text-[12px] text-[#86868b] mb-1">消费主体</label>
+        <label className="block text-[12px] text-[#86868b] mb-1">{category === 'food' ? '今日美食' : '名称'}</label>
         <input
           value={title} onChange={(e) => setTitle(e.target.value)}
           className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3 py-2.5 text-[15px] outline-none mb-4"
-          placeholder="如 红烧肉、青菜"
+          placeholder={category === 'food' ? '如 红烧肉、青菜' : '如 打车、淘宝购物'}
         />
 
         {/* 分类（收入时隐藏，固定 income） */}

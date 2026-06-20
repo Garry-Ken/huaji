@@ -235,27 +235,39 @@ export function Dashboard({ expenses, onGotoHealth, budget, onSettleDebt }: { ex
         )}
       </div>
 
-      {/* 收入趋势 + 来源（仅有收入时显示） */}
-      {view.totalIncome > 0 && (
-        <>
-          <div className="card p-5">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <div className="text-[13px] text-[#86868b]">总收入</div>
+      {/* 收入概览 */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="text-[13px] text-[#86868b]">总收入</div>
+            {view.totalIncome > 0 ? (
+              <>
                 <div className="text-[28px] font-bold tracking-tight leading-tight text-[#30d158]">+{yuan(view.totalIncome)}</div>
                 {incomeDelta != null && (
                   <div className={`text-[13px] mt-0.5 ${incomeDelta > 0 ? 'text-[#30d158]' : 'text-[#ff3b30]'}`}>
                     {incomeDelta > 0 ? '↑' : '↓'} {Math.abs(incomeDelta).toFixed(0)}% 较上一{KINDS.find((k) => k.id === kind)?.label}
                   </div>
                 )}
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <StatTile label="笔数" value={view.incomeCount} />
-                <StatTile label="单笔均" value={yuan(view.incomeCount ? view.totalIncome / view.incomeCount : 0)} />
-              </div>
-            </div>
+              </>
+            ) : (
+              <div className="text-[22px] font-bold tracking-tight leading-tight text-[#86868b]">¥0</div>
+            )}
           </div>
+          {view.totalIncome > 0 && (
+            <div className="grid grid-cols-2 gap-2.5">
+              <StatTile label="笔数" value={view.incomeCount} />
+              <StatTile label="单笔均" value={yuan(view.incomeCount ? view.totalIncome / view.incomeCount : 0)} />
+            </div>
+          )}
+        </div>
+        {view.totalIncome === 0 && (
+          <div className="text-[13px] text-[#86868b] mt-2">本周期暂无收入记录 · 输入"发工资 8000"或"收到退款 50"即可记录</div>
+        )}
+      </div>
 
+      {/* 收入趋势 */}
+      {view.totalIncome > 0 && (
+        <>
           <div className="card p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[15px] font-semibold">收入趋势</h3>

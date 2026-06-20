@@ -9,7 +9,8 @@ import { CategoryTag, MealTag, HealthLevelTag } from './bits'
 import { MicIcon, ClipboardIcon, SparkIcon, MapPinIcon, ClockIcon } from './icons'
 import { speechSupported, createRecognizer, type Recognizer } from '../lib/speech'
 
-const EXAMPLES = ['中午公司楼下吃麻辣烫 28', '打车回家 35', '下午一杯奶茶 18', '晚上和朋友火锅 158', '淘宝买了件外套 299']
+const EXPENSE_EXAMPLES = ['中午公司楼下吃麻辣烫 28', '打车回家 35', '下午一杯奶茶 18', '淘宝买了件外套 299']
+const INCOME_EXAMPLES = ['发工资 8000', '收到退款 50', '兼职收入 500', '朋友还我 200']
 
 export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) => void }) {
   const [text, setText] = useState('')
@@ -176,16 +177,29 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) 
 
       {/* 空状态示例 */}
       {!display.trim() && (
-        <div className="mt-2.5 flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
-          {EXAMPLES.map((ex) => (
-            <button
-              key={ex}
-              onClick={() => { setText(ex); setSource('text'); taRef.current?.focus() }}
-              className="pill bg-[#f2f2f7] dark:bg-[#2c2c2e] text-[#636366] dark:text-[#aeaeb2] whitespace-nowrap hover:bg-[#e5e5ea] dark:hover:bg-[#3a3a3c] shrink-0"
-            >
-              {ex}
-            </button>
-          ))}
+        <div className="mt-2.5 space-y-2">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
+            {EXPENSE_EXAMPLES.map((ex) => (
+              <button
+                key={ex}
+                onClick={() => { setText(ex); setSource('text'); taRef.current?.focus() }}
+                className="pill bg-[#f2f2f7] dark:bg-[#2c2c2e] text-[#636366] dark:text-[#aeaeb2] whitespace-nowrap hover:bg-[#e5e5ea] dark:hover:bg-[#3a3a3c] shrink-0"
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
+            {INCOME_EXAMPLES.map((ex) => (
+              <button
+                key={ex}
+                onClick={() => { setText(ex); setSource('text'); taRef.current?.focus() }}
+                className="pill bg-[#30d158]/10 text-[#30d158] whitespace-nowrap hover:bg-[#30d158]/20 shrink-0"
+              >
+                +{ex}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
