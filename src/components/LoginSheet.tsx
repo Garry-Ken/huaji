@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { useEntitlement } from '../lib/entitlement'
 import { XIcon, CrownIcon } from './icons'
 
-// 邮箱验证码登录：输入邮箱 → 收 6 位码 → 验证。跨平台（网页/Mac/Win/安卓）通用。
 export function LoginSheet() {
-  const { loginOpen, closeLogin, sendOtp, verifyOtp } = useEntitlement()
+  const { loginOpen, closeLogin, sendOtp, verifyOtp, signInWithPassword, resetPassword } = useEntitlement()
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
-  const [step, setStep] = useState<'email' | 'code'>('email')
+  const [pw, setPw] = useState('')
+  const [step, setStep] = useState<'email' | 'code' | 'password' | 'forgot'>('email')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [ok, setOk] = useState(false)
@@ -16,9 +16,7 @@ export function LoginSheet() {
 
   const close = () => {
     closeLogin()
-    setTimeout(() => {
-      setStep('email'); setCode(''); setMsg(null); setOk(false)
-    }, 200)
+    setTimeout(() => { setStep('email'); setCode(''); setPw(''); setMsg(null); setOk(false) }, 200)
   }
 
   const send = async () => {
@@ -39,6 +37,29 @@ export function LoginSheet() {
     else { setOk(false); setMsg(r.msg) }
   }
 
+  const loginPw = async () => {
+    if (!pw || busy) return
+    setBusy(true); setMsg(null)
+    const r = await signInWithPassword(email, pw)
+    setBusy(false)
+    if (r.ok) close()
+    else { setOk(false); setMsg(r.msg) }
+  }
+
+  const forgot = async () => {
+    if (!email.trim() || busy) return
+    setBusy(true); setMsg(null)
+    const r = await resetPassword(email)
+    setBusy(false)
+    setOk(r.ok); setMsg(r.msg)
+    if (r.ok) setStep('forgot')
+  }
+
+  const sub = step === 'email' ? '用邮箱登录，开通后可跨设备恢复 Pro'
+    : step === 'code' ? `验证码已发送至 ${email}`
+    : step === 'password' ? `使用密码登录 ${email}`
+    : `重置链接已发送至 ${email}`
+
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
@@ -50,18 +71,13 @@ export function LoginSheet() {
             <CrownIcon size={28} />
           </div>
           <h2 className="text-[20px] font-bold tracking-tight">登录花迹</h2>
-          <p className="text-[13px] text-[#86868b] mt-1">
-            {step === 'email' ? '用邮箱登录，开通后可跨设备恢复 Pro' : `验证码已发送至 ${email}`}
-          </p>
+          <p className="text-[13px] text-[#86868b] mt-1">{sub}</p>
         </div>
 
-        {step === 'email' ? (
+        {step === 'email' && (
           <>
             <input
-              type="email"
-              inputMode="email"
-              autoFocus
-              value={email}
+              type="email" inputMode="email" autoFocus value={email}
               onChange={(e) => { setEmail(e.target.value); setMsg(null) }}
               onKeyDown={(e) => { if (e.key === 'Enter') send() }}
               placeholder="you@example.com"
@@ -70,13 +86,17 @@ export function LoginSheet() {
             <button onClick={send} disabled={busy || !email.trim()} className="btn-primary w-full !py-3 text-[16px]">
               {busy ? '发送中…' : '发送验证码'}
             </button>
+            <button onClick={() => { if (email.trim()) { setStep('password'); setMsg(null) } else setMsg('请先输入邮箱') }}
+              className="w-full text-center text-[13px] text-[#0a84ff] mt-3">
+              密码登录
+            </button>
           </>
-        ) : (
+        )}
+
+        {step === 'code' && (
           <>
             <input
-              inputMode="numeric"
-              autoFocus
-              value={code}
+              inputMode="numeric" autoFocus value={code}
               onChange={(e) => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setMsg(null) }}
               onKeyDown={(e) => { if (e.key === 'Enter') verify() }}
               placeholder="6 位验证码"
@@ -87,6 +107,40 @@ export function LoginSheet() {
             </button>
             <button onClick={() => { setStep('email'); setMsg(null); setCode('') }} className="w-full text-center text-[13px] text-[#86868b] mt-3">
               换个邮箱 / 重新发送
+            </button>
+          </>
+        )}
+
+        {step === 'password' && (
+          <>
+            <input
+              type="password" autoFocus value={pw}
+              onChange={(e) => { setPw(e.target.value); setMsg(null) }}
+              onKeyDown={(e) => { if (e.key === 'Enter') loginPw() }}
+              placeholder="输入密码"
+              className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3.5 py-3 text-[15px] outline-none mb-3"
+            />
+            <button onClick={loginPw} disabled={busy || !pw} className="btn-primary w-full !py-3 text-[16px]">
+              {busy ? '登录中…' : '登录'}
+            </button>
+            <div className="flex justify-between mt-3">
+              <button onClick={() => { setStep('email'); setMsg(null); setPw('') }} className="text-[13px] text-[#86868b]">
+                验证码登录
+              </button>
+              <button onClick={forgot} className="text-[13px] text-[#0a84ff]">
+                忘记密码？
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === 'forgot' && (
+          <>
+            <div className="text-center text-[14px] text-[#86868b] mb-4">
+              请查看邮箱，点击重置链接后设置新密码。
+            </div>
+            <button onClick={() => { setStep('email'); setMsg(null) }} className="btn-primary w-full !py-3 text-[16px]">
+              返回登录
             </button>
           </>
         )}

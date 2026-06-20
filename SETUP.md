@@ -16,16 +16,17 @@
 
 ## 二、设置自己为管理员
 
-1. 在花迹 App 里用你的邮箱登录一次（我的 → 登录）
-2. 打开 Supabase 控制台 → **Authentication** → **Users**
-3. 找到你的账号，复制 `UID`（类似 `a1b2c3d4-...`）
-4. 去 **SQL Editor** → **New query**，运行：
+1. 在花迹 App 里用 `guruzen1913@gmail.com` 登录一次（我的 → 登录）
+2. 打开 Supabase 控制台 → **SQL Editor** → **New query**
+3. 运行 `supabase/schema.sql` 底部的管理员设置语句（已内置你的邮箱，无需手动查 UID）：
 
 ```sql
-INSERT INTO public.admins(user_id) VALUES ('你的UID') ON CONFLICT DO NOTHING;
+INSERT INTO public.admins(user_id)
+SELECT id FROM auth.users WHERE lower(email) = 'guruzen1913@gmail.com'
+ON CONFLICT DO NOTHING;
 ```
 
-5. 回到 App，刷新「我的」页面，底部会出现 **🛠️ 店主面板**
+4. 回到 App，刷新「我的」页面，底部会出现 **🛠️ 店主面板**
 
 ## 三、云端同步表（可选，Pro 功能）
 

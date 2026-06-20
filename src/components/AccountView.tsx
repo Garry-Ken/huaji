@@ -47,6 +47,7 @@ export function AccountView({ expenses, onToast, onClearData, onReload }: { expe
   const fileRef = useRef<HTMLInputElement>(null)
   const [syncing, setSyncing] = useState(false)
   const [budgetOpen, setBudgetOpen] = useState(false)
+  const [pwOpen, setPwOpen] = useState(false)
 
   const statusMeta =
     status === 'pro'
@@ -81,16 +82,19 @@ export function AccountView({ expenses, onToast, onClearData, onReload }: { expe
       </div>
 
       {/* 账号 */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-hidden divide-y divide-[#00000008] dark:divide-[#ffffff0d]">
         {user ? (
-          <div className="flex items-center gap-3 px-4 py-3.5">
-            <span className="text-[#0a84ff]"><UserIcon size={20} /></span>
-            <div className="flex-1 min-w-0">
-              <div className="text-[15px] font-medium truncate">{user.email}</div>
-              <div className="text-[12px] text-[#86868b]">已登录 · Pro 权益跨设备同步</div>
+          <>
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              <span className="text-[#0a84ff]"><UserIcon size={20} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[15px] font-medium truncate">{user.email}</div>
+                <div className="text-[12px] text-[#86868b]">已登录 · Pro 权益跨设备同步</div>
+              </div>
+              <button onClick={() => { signOut(); onToast('已退出登录') }} className="text-[13px] text-[#ff3b30] font-medium shrink-0">退出</button>
             </div>
-            <button onClick={() => { signOut(); onToast('已退出登录') }} className="text-[13px] text-[#ff3b30] font-medium shrink-0">退出</button>
-          </div>
+            <Row icon={<ShieldIcon size={20} />} title="修改密码" sub="设置或更改登录密码" locked={false} onClick={() => setPwOpen(true)} />
+          </>
         ) : (
           <button onClick={openLogin} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e]/40">
             <span className="text-[#0a84ff]"><UserIcon size={20} /></span>
@@ -205,6 +209,7 @@ export function AccountView({ expenses, onToast, onClearData, onReload }: { expe
       </div>
 
       {budgetOpen && <BudgetSheet onClose={() => setBudgetOpen(false)} onToast={onToast} />}
+      {pwOpen && <PasswordChangeSheet onClose={() => setPwOpen(false)} onToast={onToast} />}
     </div>
   )
 }
@@ -332,6 +337,47 @@ function BudgetSheet({ onClose, onToast }: { onClose: () => void; onToast: (m: s
           <div className="flex-1" />
           <button onClick={onClose} className="btn-ghost">取消</button>
           <button onClick={save} className="btn-primary"><CheckIcon size={18} />保存</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PasswordChangeSheet({ onClose, onToast }: { onClose: () => void; onToast: (m: string) => void }) {
+  const { updatePassword } = useEntitlement()
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const mismatch = pw2.length > 0 && pw !== pw2
+  const valid = pw.length >= 6 && pw === pw2
+
+  const save = async () => {
+    if (!valid || busy) return
+    setBusy(true); setMsg(null)
+    const r = await updatePassword(pw)
+    setBusy(false)
+    if (r.ok) { onToast('密码已更新 ✓'); onClose() }
+    else setMsg(r.msg)
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full sm:max-w-sm card !rounded-t-3xl sm:!rounded-3xl rounded-b-none p-6 animate-pop safe-bottom">
+        <h3 className="text-[17px] font-semibold mb-1">设置密码</h3>
+        <p className="text-[13px] text-[#86868b] mb-4">设置后可使用密码登录（至少 6 位）</p>
+        <input type="password" autoFocus value={pw} onChange={(e) => { setPw(e.target.value); setMsg(null) }} placeholder="新密码"
+          className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3.5 py-3 text-[15px] outline-none mb-3" />
+        <input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setMsg(null) }} onKeyDown={(e) => { if (e.key === 'Enter') save() }} placeholder="确认密码"
+          className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3.5 py-3 text-[15px] outline-none mb-3" />
+        {mismatch && <p className="text-[12px] text-[#ff3b30] mb-2">两次密码不一致</p>}
+        {msg && <p className="text-[12px] text-[#ff3b30] mb-2">{msg}</p>}
+        <div className="flex items-center gap-3">
+          <div className="flex-1" />
+          <button onClick={onClose} className="btn-ghost">取消</button>
+          <button onClick={save} disabled={!valid || busy} className="btn-primary">{busy ? '设置中…' : '确认'}</button>
         </div>
       </div>
     </div>

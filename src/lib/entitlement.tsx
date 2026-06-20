@@ -95,7 +95,10 @@ function persistLocal(p: LocalPrefs) {
 // ---------- 错误信息中文化 ----------
 function zhAuth(m: string): string {
   if (/rate|too many|seconds|limit/i.test(m)) return '发送太频繁，请过一会儿再试'
+  if (/invalid.*credentials|invalid.*password/i.test(m)) return '邮箱或密码错误'
   if (/invalid|expired|token|otp/i.test(m)) return '验证码错误或已过期'
+  if (/password.*(?:short|weak|length|at least)/i.test(m)) return '密码太短，至少 6 位'
+  if (/same.*password|identical/i.test(m)) return '新密码不能与旧密码相同'
   if (/email/i.test(m)) return '邮箱格式不正确'
   return m || '出错了，请重试'
 }
@@ -136,6 +139,11 @@ interface Ctx {
   authReady: boolean
   sendOtp: (email: string) => Promise<{ ok: boolean; msg: string }>
   verifyOtp: (email: string, token: string) => Promise<{ ok: boolean; msg: string }>
+  signInWithPassword: (email: string, password: string) => Promise<{ ok: boolean; msg: string }>
+  resetPassword: (email: string) => Promise<{ ok: boolean; msg: string }>
+  updatePassword: (password: string) => Promise<{ ok: boolean; msg: string }>
+  passwordRecovery: boolean
+  dismissPasswordRecovery: () => void
   signOut: () => Promise<void>
   // 操作
   startTrial: () => void
@@ -167,6 +175,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   const [paywallOpen, setPaywallOpen] = useState(false)
   const [paywallReason, setPaywallReason] = useState<string | undefined>()
   const [loginOpen, setLoginOpen] = useState(false)
+  const [passwordRecovery, setPasswordRecovery] = useState(false)
 
   useEffect(() => persistLocal(local), [local])
 
@@ -195,7 +204,8 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refresh()
-    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
       refresh()
     })
     return () => sub.subscription.unsubscribe()
@@ -217,6 +227,27 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
     },
     [refresh],
   )
+
+  const signInWithPassword = useCallback(async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    if (error) return { ok: false, msg: zhAuth(error.message) }
+    await refresh()
+    setLoginOpen(false)
+    return { ok: true, msg: '登录成功' }
+  }, [refresh])
+
+  const resetPassword = useCallback(async (email: string) => {
+    const redirectTo = typeof window !== 'undefined' ? window.location.origin : 'https://huaji.pages.dev'
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo })
+    return error ? { ok: false, msg: zhAuth(error.message) } : { ok: true, msg: '重置链接已发到邮箱，请查收' }
+  }, [])
+
+  const updatePassword = useCallback(async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) return { ok: false, msg: zhAuth(error.message) }
+    setPasswordRecovery(false)
+    return { ok: true, msg: '密码已更新' }
+  }, [])
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
@@ -293,6 +324,11 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       authReady,
       sendOtp,
       verifyOtp,
+      signInWithPassword,
+      resetPassword,
+      updatePassword,
+      passwordRecovery,
+      dismissPasswordRecovery: () => setPasswordRecovery(false),
       signOut,
       startTrial,
       redeem,
@@ -309,7 +345,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       openLogin: () => setLoginOpen(true),
       closeLogin: () => setLoginOpen(false),
     }
-  }, [local, user, serverEnt, isAdmin, authReady, paywallOpen, paywallReason, loginOpen, sendOtp, verifyOtp, signOut, startTrial, redeem, mintCode, adminGrant, refresh, restore, resetLocal, openPaywall])
+  }, [local, user, serverEnt, isAdmin, authReady, paywallOpen, paywallReason, loginOpen, passwordRecovery, sendOtp, verifyOtp, signInWithPassword, resetPassword, updatePassword, signOut, startTrial, redeem, mintCode, adminGrant, refresh, restore, resetLocal, openPaywall])
 
   return <EntitlementContext.Provider value={value}>{children}</EntitlementContext.Provider>
 }

@@ -11,6 +11,7 @@ import { AccountView } from './components/AccountView'
 import { EditSheet } from './components/EditSheet'
 import { Paywall } from './components/Paywall'
 import { LoginSheet } from './components/LoginSheet'
+import { PasswordResetSheet } from './components/PasswordResetSheet'
 import { useEntitlement } from './lib/entitlement'
 import { WalletIcon, PieIcon, HealthIcon, UserIcon, CrownIcon, SunIcon, MoonIcon, PlusIcon, CheckIcon } from './components/icons'
 
@@ -223,6 +224,7 @@ export default function App() {
       {/* 付费墙 + 登录 */}
       <Paywall onResult={showToast} />
       <LoginSheet />
+      <PasswordResetSheet />
 
       {/* Toast */}
       {toast && (

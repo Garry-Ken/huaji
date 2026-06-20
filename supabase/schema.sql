@@ -155,7 +155,9 @@ grant select, insert, update on public.records to authenticated;
 -- ============================================================================
 -- 管理员设置
 --
--- 创建你自己的账号(在 App 里用邮箱登录一次)后，把下面 <你的UID> 换成你的 uid 再跑一次：
---   insert into public.admins(user_id) values ('<你的UID>') on conflict do nothing;
--- 你的 UID 在 控制台 → Authentication → Users 里点开你的账号可见。
+-- 用邮箱登录 App 一次后，运行下面的语句即可成为管理员（按邮箱自动查找 UID）：
 -- ============================================================================
+
+insert into public.admins(user_id)
+select id from auth.users where lower(email) = 'guruzen1913@gmail.com'
+on conflict do nothing;
