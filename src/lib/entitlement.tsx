@@ -307,7 +307,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
     const now = Date.now()
     const trialEnds = local.trialStartedAt ? local.trialStartedAt + TRIAL_DAYS * DAY : 0
     const trialActive = trialEnds > now
-    const serverPro = !!(serverEnt && serverEnt.expiresAt && serverEnt.expiresAt > now)
+    const serverPro = !!(serverEnt && serverEnt.expiresAt && serverEnt.expiresAt > now) || isAdmin
     const status: Status = serverPro ? 'pro' : trialActive ? 'trial' : local.trialStartedAt ? 'expired' : 'free'
     const daysLeft = local.trialStartedAt ? Math.max(0, Math.ceil((trialEnds - now) / DAY)) : 0
     return {
