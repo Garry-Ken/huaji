@@ -76,6 +76,23 @@ begin
   return v_code;
 end $$;
 
+-- 店主：批量铸造兑换码
+create or replace function public.mint_codes(p_plan text, p_count int default 5)
+  returns text[]
+  language plpgsql security definer set search_path = public as $$
+declare v_codes text[] := '{}'; v_code text; i int;
+begin
+  if not public.is_admin() then raise exception 'not authorized'; end if;
+  if public.plan_months(p_plan) = 0 then raise exception 'invalid plan'; end if;
+  if p_count < 1 or p_count > 20 then raise exception 'count must be 1-20'; end if;
+  for i in 1..p_count loop
+    v_code := 'HJ-' || upper(substr(p_plan,1,1)) || '-' || upper(substr(md5(gen_random_uuid()::text),1,8));
+    insert into public.redeem_codes(code, plan) values (v_code, p_plan);
+    v_codes := v_codes || v_code;
+  end loop;
+  return v_codes;
+end $$;
+
 -- 用户：核销兑换码（原子、防重复、可叠加续期）
 create or replace function public.redeem_code(p_code text)
   returns table(plan text, expires_at timestamptz)
@@ -123,6 +140,7 @@ end $$;
 grant execute on function public.my_entitlement()           to authenticated;
 grant execute on function public.redeem_code(text)          to authenticated;
 grant execute on function public.mint_code(text)            to authenticated;
+grant execute on function public.mint_codes(text, int)     to authenticated;
 grant execute on function public.admin_grant(text, text)    to authenticated;
 grant execute on function public.is_admin()                 to authenticated;
 
@@ -161,3 +179,25 @@ grant select, insert, update on public.records to authenticated;
 insert into public.admins(user_id)
 select id from auth.users where lower(email) = 'guruzen1913@gmail.com'
 on conflict do nothing;
+
+-- ============================================================================
+-- Phase 3: AI 配置表
+-- ============================================================================
+
+create table if not exists public.app_config (
+  key   text primary key,
+  value text not null
+);
+
+alter table public.app_config enable row level security;
+
+drop policy if exists "authenticated read config" on public.app_config;
+create policy "authenticated read config" on public.app_config
+  for select to authenticated using (true);
+
+drop policy if exists "admins write config" on public.app_config;
+create policy "admins write config" on public.app_config
+  for all to authenticated using (public.is_admin())
+  with check (public.is_admin());
+
+grant select on public.app_config to authenticated;

@@ -1,6 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
-import type { InputSource } from '../types'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { InputSource, ParseResult } from '../types'
 import { parseMultiExpense } from '../lib/parser'
+import { aiEnhanceParse } from '../lib/ai'
+import { useEntitlement } from '../lib/entitlement'
 import { yuan, relativeDay, timeShort } from '../lib/format'
 import { categoryMeta } from '../lib/categories'
 import { CategoryTag, MealTag, HealthLevelTag } from './bits'
@@ -14,11 +16,28 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) 
   const [interim, setInterim] = useState('')
   const [listening, setListening] = useState(false)
   const [source, setSource] = useState<InputSource>('text')
+  const [aiResults, setAiResults] = useState<ParseResult[] | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
   const recRef = useRef<Recognizer | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const aiSeq = useRef(0)
+  const { aiEnhance, isPro } = useEntitlement()
 
   const display = text + interim
-  const previews = useMemo(() => (display.trim() ? parseMultiExpense(display) : []), [display])
+  const localPreviews = useMemo(() => (display.trim() ? parseMultiExpense(display) : []), [display])
+  const previews = aiResults ?? localPreviews
+
+  useEffect(() => {
+    const raw = display.trim()
+    if (!raw || !aiEnhance || !isPro || localPreviews.length === 0) { setAiResults(null); return }
+    const seq = ++aiSeq.current
+    setAiLoading(true)
+    const timer = setTimeout(async () => {
+      const result = await aiEnhanceParse(raw, localPreviews)
+      if (aiSeq.current === seq) { setAiResults(result); setAiLoading(false) }
+    }, 800)
+    return () => { clearTimeout(timer); if (aiSeq.current === seq) setAiLoading(false) }
+  }, [display, aiEnhance, isPro]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const commit = () => {
     const raw = display.trim()
@@ -27,6 +46,7 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) 
     setText('')
     setInterim('')
     setSource('text')
+    setAiResults(null)
     taRef.current?.focus()
   }
 
@@ -89,11 +109,18 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) 
       />
 
       {/* 实时解析预览 */}
+      {aiLoading && previews.length > 0 && (
+        <div className="mt-2 flex items-center gap-1.5 text-[12px] text-[#0a84ff]">
+          <SparkIcon size={13} className="animate-pulse" />
+          <span>AI 优化中…</span>
+        </div>
+      )}
       {previews.length === 1 && (() => {
         const preview = previews[0]
         return (
           <div className="mt-2 rounded-2xl bg-[#f5f5f7] dark:bg-[#2c2c2e]/60 p-3 animate-pop">
             <div className="flex items-center justify-between gap-3 flex-wrap">
+              {aiResults && <span className="text-[10px] text-[#0a84ff] bg-[#0a84ff]/10 rounded-full px-2 py-0.5 font-medium">AI</span>}
               <div className="flex items-baseline gap-1">
                 {preview.amount != null ? (
                   <>

@@ -16,7 +16,7 @@ const PRO_ROWS = [
   { key: 'history', label: '无限历史记录' },
 ]
 
-const APP_VERSION = '0.2.1'
+const APP_VERSION = '0.2.2'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
@@ -215,8 +215,8 @@ export function AccountView({ expenses, onToast, onClearData, onReload }: { expe
 }
 
 function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; onClearData: () => void }) {
-  const { mintCode, adminGrant } = useEntitlement()
-  const [code, setCode] = useState<string | null>(null)
+  const { mintCodes, adminGrant } = useEntitlement()
+  const [codes, setCodes] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [email, setEmail] = useState('')
   const [grantMsg, setGrantMsg] = useState<string | null>(null)
@@ -224,15 +224,18 @@ function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; on
   const mint = async (plan: Plan) => {
     setBusy(true)
     try {
-      setCode(await mintCode(plan))
-      onToast('已生成兑换码')
+      setCodes(await mintCodes(plan, 5))
+      onToast('已生成 5 个兑换码')
     } catch (e) {
       onToast(e instanceof Error ? e.message : '发码失败')
     }
     setBusy(false)
   }
-  const copy = () => {
-    if (code) navigator.clipboard?.writeText(code).then(() => onToast('已复制兑换码')).catch(() => {})
+  const copyOne = (c: string) => {
+    navigator.clipboard?.writeText(c).then(() => onToast('已复制')).catch(() => {})
+  }
+  const copyAll = () => {
+    if (codes.length) navigator.clipboard?.writeText(codes.join('\n')).then(() => onToast('已复制全部兑换码')).catch(() => {})
   }
   const grant = async (plan: Plan) => {
     if (!email.trim() || busy) return
@@ -248,17 +251,22 @@ function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; on
       <div className="text-[12px] text-[#ff9f0a] font-semibold mb-3">🛠️ 店主面板（仅你可见）</div>
 
       {/* 发码 */}
-      <div className="text-[12px] text-[#86868b] mb-2">生成兑换码（买家付款后发给他）</div>
+      <div className="text-[12px] text-[#86868b] mb-2">批量生成 5 个兑换码（每个仅可用一次）</div>
       <div className="grid grid-cols-3 gap-2">
         {(['monthly', 'quarterly', 'annual'] as Plan[]).map((p) => (
-          <button key={p} disabled={busy} onClick={() => mint(p)} className="btn-ghost justify-center text-[13px]">{planLabel(p)}码</button>
+          <button key={p} disabled={busy} onClick={() => mint(p)} className="btn-ghost justify-center text-[13px]">{planLabel(p)}×5</button>
         ))}
       </div>
-      {code && (
-        <button onClick={copy} className="mt-3 w-full flex items-center justify-between gap-2 rounded-xl bg-[#0a84ff]/10 px-3 py-2.5 text-[#0a84ff]">
-          <span className="font-mono text-[14px] tracking-wide truncate">{code}</span>
-          <span className="text-[12px] shrink-0">点击复制</span>
-        </button>
+      {codes.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {codes.map((c) => (
+            <button key={c} onClick={() => copyOne(c)} className="w-full flex items-center justify-between gap-2 rounded-xl bg-[#0a84ff]/10 px-3 py-2 text-[#0a84ff]">
+              <span className="font-mono text-[13px] tracking-wide truncate">{c}</span>
+              <span className="text-[11px] shrink-0">复制</span>
+            </button>
+          ))}
+          <button onClick={copyAll} className="w-full text-center text-[12px] text-[#0a84ff] font-medium mt-1">一键复制全部</button>
+        </div>
       )}
 
       {/* 按邮箱直接开通 */}

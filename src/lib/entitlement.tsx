@@ -149,6 +149,7 @@ interface Ctx {
   startTrial: () => void
   redeem: (code: string) => Promise<{ ok: boolean; msg: string }>
   mintCode: (plan: Plan) => Promise<string>
+  mintCodes: (plan: Plan, count?: number) => Promise<string[]>
   adminGrant: (email: string, plan: Plan) => Promise<{ ok: boolean; msg: string }>
   refresh: () => Promise<void>
   restore: () => void
@@ -285,6 +286,12 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
     return data as string
   }, [])
 
+  const mintCodes = useCallback(async (plan: Plan, count = 5) => {
+    const { data, error } = await supabase.rpc('mint_codes', { p_plan: plan, p_count: count })
+    if (error) throw new Error(zhRpc(error.message))
+    return data as string[]
+  }, [])
+
   const adminGrant = useCallback(
     async (email: string, plan: Plan) => {
       const { error } = await supabase.rpc('admin_grant', { p_email: email.trim(), p_plan: plan })
@@ -334,6 +341,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       startTrial,
       redeem,
       mintCode,
+      mintCodes,
       adminGrant,
       refresh,
       restore,
@@ -346,7 +354,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       openLogin: () => setLoginOpen(true),
       closeLogin: () => setLoginOpen(false),
     }
-  }, [local, user, serverEnt, isAdmin, authReady, paywallOpen, paywallReason, loginOpen, passwordRecovery, sendOtp, verifyOtp, signInWithPassword, resetPassword, updatePassword, signOut, startTrial, redeem, mintCode, adminGrant, refresh, restore, resetLocal, openPaywall])
+  }, [local, user, serverEnt, isAdmin, authReady, paywallOpen, paywallReason, loginOpen, passwordRecovery, sendOtp, verifyOtp, signInWithPassword, resetPassword, updatePassword, signOut, startTrial, redeem, mintCode, mintCodes, adminGrant, refresh, restore, resetLocal, openPaywall])
 
   return <EntitlementContext.Provider value={value}>{children}</EntitlementContext.Provider>
 }
