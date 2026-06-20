@@ -412,8 +412,9 @@ function extractLocation(text: string): string | undefined {
   return place
 }
 
-const NOISE_RE = /\d+(?:\.\d+)?\s*(?:元|块钱?|¥|￥|份|碗|杯|个|斤|两|克|g|kg)?/gi
-const VERB_RE = /(?:吃了?|喝了?|买了?|点了?|花了?|来[一个份碗杯]|一[份碗杯个]|中午|下午|上午|晚上|今天|昨天|在\S{1,4})/g
+const NOISE_RE = /\d+(?:\.\d+)?\s*(?:元|块钱?|¥|￥)?/gi
+const VERB_RE = /(?:吃了?|喝了?|买了?|点了?|花了?|来[一个份碗杯]|中午|下午|上午|晚上|今天|昨天|在\S{1,4})/g
+const QUANTIFIER_FOOD_RE = /(?:吃了?|喝了?|买了?|点了?|来了?|煮了?|做了?|烤了?|炸了?|蒸了?|炒了?|嚼了?|啃了?|嗑了?)\s*(?:一|两|三|几|点|些)?\s*(?:碗|杯|个|份|根|串|盒|袋|瓶|块|片|盘|包|桶|罐|条|把|颗|粒|口|块儿)\s*([一-鿿]{1,6})/
 
 function extractFoodNames(text: string, foodHits: { match: string[]; name: string }[]): string[] {
   const lower = text.toLowerCase()
@@ -422,31 +423,67 @@ function extractFoodNames(text: string, foodHits: { match: string[]; name: strin
     const names: string[] = []
     for (const seg of segments) {
       const clean = seg.replace(NOISE_RE, '').replace(VERB_RE, '').trim()
-      if (clean.length < 2 || clean.length > 12) continue
+      if (clean.length < 1 || clean.length > 12) continue
       if (/^\d+$/.test(clean)) continue
       names.push(clean)
     }
     if (names.length > 0) return dedupe(names).slice(0, 4)
   }
-  if (foodHits.length === 0) return []
-  const matched: string[] = []
-  for (const f of foodHits) {
-    for (const k of f.match) {
-      if (lower.includes(k.toLowerCase()) && k.length >= 2) { matched.push(k); break }
+
+  if (foodHits.length > 0) {
+    const matched: string[] = []
+    for (const f of foodHits) {
+      let best = ''
+      for (const k of f.match) {
+        if (lower.includes(k.toLowerCase()) && k.length > best.length) best = k
+      }
+      if (best) matched.push(best)
     }
+    // Remove shorter matches that are substrings of longer ones
+    const filtered = matched.filter(a => !matched.some(b => b.length > a.length && b.includes(a)))
+    if (filtered.length > 0) return dedupe(filtered)
   }
-  return dedupe(matched)
+
+  // Fallback: extract food name after quantifier: "吃了碗粥" "喝了杯豆浆" "吃了根冰棍"
+  const qm = text.match(QUANTIFIER_FOOD_RE)
+  if (qm && qm[1]) {
+    const foodName = qm[1].replace(/\d+.*$/, '').trim()
+    if (foodName.length >= 1) return [foodName]
+  }
+
+  return []
 }
+
+const INCOME_TITLE_MAP: [RegExp, string][] = [
+  [/工资|薪水|月薪/, '工资'],
+  [/奖金|年终/, '奖金'],
+  [/红包/, '红包'],
+  [/退款|退货/, '退款'],
+  [/报销/, '报销'],
+  [/利息|理财|收益/, '理财收益'],
+  [/兼职|外快/, '兼职'],
+  [/稿费|稿酬/, '稿费'],
+  [/转账|转入/, '转账'],
+  [/还我|还钱|还款/, '还款'],
+  [/卖了|卖出/, '出售'],
+  [/租金|房租/, '租金'],
+  [/补贴|补助|津贴/, '补贴'],
+]
 
 function buildTitle(args: { text: string; category: CategoryId; items: string[]; merchant?: string }): string {
   const { text, category, items, merchant } = args
   if (items.length) return items.slice(0, 3).join('、')
   if (merchant) return merchant
+  if (category === 'income') {
+    for (const [re, label] of INCOME_TITLE_MAP) {
+      if (re.test(text)) return label
+    }
+    return '收入'
+  }
   for (const cat of CATEGORY_LIST) {
     const kw = cat.keywords.find((k) => text.includes(k.toLowerCase()) && k.length >= 2)
     if (kw) return kw
   }
-  if (category === 'income') return '收入'
   return ''
 }
 

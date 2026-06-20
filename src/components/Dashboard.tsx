@@ -267,38 +267,39 @@ export function Dashboard({ expenses, onGotoHealth, budget, onSettleDebt }: { ex
 
       {/* 收入趋势 */}
       {view.totalIncome > 0 && (
-        <>
-          <div className="card p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[15px] font-semibold">收入趋势</h3>
-              <span className="text-[12px] text-[#86868b]">{barUnit}</span>
-            </div>
-            <Bars data={view.incomeBars} highlightIndex={view.highlightIndex} formatValue={(v) => yuan(v)} color="#30d158" />
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[15px] font-semibold">收入趋势</h3>
+            <span className="text-[12px] text-[#86868b]">{barUnit}</span>
           </div>
+          <Bars data={view.incomeBars} highlightIndex={view.highlightIndex} formatValue={(v) => yuan(v)} color="#30d158" />
+        </div>
+      )}
 
-          <div className="card p-5">
-            <h3 className="text-[15px] font-semibold mb-3">收入来源</h3>
-            <div className="space-y-2.5">
-              {view.incomeSources.map((s) => {
-                const pct = view.totalIncome > 0 ? (s.value / view.totalIncome) * 100 : 0
-                return (
-                  <div key={s.label} className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[15px] shrink-0 bg-[#30d158]/10">💰</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between text-[13px]">
-                        <span className="font-medium">{s.label}</span>
-                        <span className="tabular-nums text-[#30d158]">+{yuan(s.value)} <span className="text-[#86868b]">· {pct.toFixed(0)}%</span></span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-[#00000008] dark:bg-[#ffffff12] mt-1 overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#30d158' }} />
-                      </div>
+      {/* 收入来源 */}
+      {view.totalIncome > 0 && (
+        <div className="card p-5">
+          <h3 className="text-[15px] font-semibold mb-3">收入来源</h3>
+          <div className="space-y-2.5">
+            {view.incomeSources.map((s) => {
+              const pct = view.totalIncome > 0 ? (s.value / view.totalIncome) * 100 : 0
+              return (
+                <div key={s.label} className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[15px] shrink-0 bg-[#30d158]/10">💰</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span className="font-medium">{s.label}</span>
+                      <span className="tabular-nums text-[#30d158]">+{yuan(s.value)} <span className="text-[#86868b]">· {pct.toFixed(0)}%</span></span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-[#00000008] dark:bg-[#ffffff12] mt-1 overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#30d158' }} />
                     </div>
                   </div>
-                )
-              })}
-            </div>
+                </div>
+              )
+            })}
           </div>
-        </>
+        </div>
       )}
 
       {/* 饮食健康概览（teaser） */}

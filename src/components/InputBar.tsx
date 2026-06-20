@@ -105,7 +105,7 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) 
         onChange={(e) => { setText(e.target.value); setInterim(''); setSource('text') }}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit() } }}
         rows={2}
-        placeholder="例如：中午在公司楼下吃了麻辣烫，花了 28 元"
+        placeholder="支出：午餐吃了麻辣烫28元 ｜ 收入：发工资8000"
         className="input-bare text-[16px] leading-relaxed min-h-[52px]"
       />
 
