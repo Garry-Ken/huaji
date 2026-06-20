@@ -97,9 +97,9 @@ export function LoginSheet() {
           <>
             <input
               inputMode="numeric" autoFocus value={code}
-              onChange={(e) => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setMsg(null) }}
+              onChange={(e) => { setCode(e.target.value.replace(/\D/g, '').slice(0, 8)); setMsg(null) }}
               onKeyDown={(e) => { if (e.key === 'Enter') verify() }}
-              placeholder="6 位验证码"
+              placeholder="输入验证码"
               className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3.5 py-3 text-[20px] tracking-[0.4em] text-center outline-none mb-3 font-mono"
             />
             <button onClick={verify} disabled={busy || code.trim().length < 4} className="btn-primary w-full !py-3 text-[16px]">
