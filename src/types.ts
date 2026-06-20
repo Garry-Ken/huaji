@@ -77,6 +77,9 @@ export interface Ledger {
   name: string
   emoji: string
   createdAt: number
+  description?: string
+  template?: string
+  color?: string
 }
 
 /** 资产账户 */

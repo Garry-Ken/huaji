@@ -105,6 +105,7 @@ export default function App() {
   const updateAccounts = useCallback((next: AssetAccount[]) => { setAccounts(next); persistAccounts(next) }, [])
 
   const addLedger = useCallback((l: Ledger) => { updateLedgers([...ledgers, l]); setActiveLedgerId(l.id) }, [ledgers, updateLedgers])
+  const updateLedger = useCallback((l: Ledger) => { updateLedgers(ledgers.map(x => x.id === l.id ? l : x)) }, [ledgers, updateLedgers])
   const deleteLedger = useCallback((id: string) => {
     updateLedgers(ledgers.filter(l => l.id !== id))
     if (activeLedgerId === id) setActiveLedgerId('default')
@@ -180,7 +181,7 @@ export default function App() {
           </div>
           <div className="leading-none">
             <div className="font-semibold text-[16px] flex items-center gap-2">花迹
-              <LedgerSwitcher ledgers={ledgers} activeLedgerId={activeLedgerId} defaultLedger={DEFAULT_LEDGER} onSwitch={setActiveLedgerId} onAdd={addLedger} onDelete={deleteLedger} />
+              <LedgerSwitcher ledgers={ledgers} activeLedgerId={activeLedgerId} defaultLedger={DEFAULT_LEDGER} expenses={expenses} onSwitch={setActiveLedgerId} onAdd={addLedger} onUpdate={updateLedger} onDelete={deleteLedger} />
             </div>
             {budget ? (
               <div className="flex items-center gap-1.5 mt-0.5">
@@ -237,6 +238,24 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* 账本信息条 */}
+      {activeLedgerId !== 'default' && (() => {
+        const al = ledgers.find(l => l.id === activeLedgerId)
+        if (!al) return null
+        const inc = filteredExpenses.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
+        const exp = filteredExpenses.filter(e => e.type !== 'income').reduce((s, e) => s + e.amount, 0)
+        return (
+          <div className="w-full max-w-2xl mx-auto px-4">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[#f5f5f7] dark:bg-[#1c1c1e] text-[12px] text-[#86868b]"
+              style={al.color ? { borderLeft: '3px solid', borderImage: `${al.color} 1` } : undefined}>
+              {al.description && <span className="font-medium text-[#3a3a3c] dark:text-[#d1d1d6]">{al.description}</span>}
+              {al.description && <span>·</span>}
+              <span>收 ¥{Math.round(inc).toLocaleString('zh-CN')} · 支 ¥{Math.round(exp).toLocaleString('zh-CN')} · {filteredExpenses.length}笔</span>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* 内容 */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-5 pb-28 sm:pb-10">
