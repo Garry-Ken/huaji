@@ -198,12 +198,23 @@ const TIME_START = /^(?:早上|早晨|上午|中午|下午|午后|傍晚|晚上|
 const TRANS_TIME = /^(?:然后|最后|还有|另外|接着|后来|之后)\s*(?:早上|早晨|上午|中午|下午|午后|傍晚|晚上|今晚|凌晨|早餐|午餐|晚餐)/
 const INCOME_START = /^(?:发工资|工资[发到]|给我[转打]|收到|到账|进账)/
 
+const AMOUNT_ONLY_RE = /^\d+(?:\.\d+)?\s*(?:元|块钱?|块|圆|刀|美元|rmb|¥|￥)?$/i
+
 function splitSegments(rawText: string): string[] {
   const text = rawText.trim()
   if (!text) return []
   const sentences = text.split(/[。；！？\n]+/).map(s => s.trim()).filter(Boolean)
+  const raw: string[] = []
+  for (const sent of sentences) raw.push(...splitWithinSentence(sent))
+  // Merge amount-only segments (e.g. "19块") back into the previous segment
   const result: string[] = []
-  for (const sent of sentences) result.push(...splitWithinSentence(sent))
+  for (const seg of raw) {
+    if (result.length > 0 && AMOUNT_ONLY_RE.test(seg)) {
+      result[result.length - 1] += '，' + seg
+    } else {
+      result.push(seg)
+    }
+  }
   return result
 }
 
@@ -309,7 +320,15 @@ function extractAmount(text: string): number | null {
 
   // 兜底：取最后一个不像「时间/数量」的数字
   const tokens = [...text.matchAll(/(\d+(?:\.\d+)?)\s*([点号月日年岁周楼路班杯个只份位斤克ml毫升]?)/g)]
-  const moneyish = tokens.filter((t) => !t[2]) // 后面没有时间/量词单位的
+  const moneyish = tokens.filter((t) => {
+    if (t[2]) return false // 后面有时间/量词单位
+    // 排除时间模式中的数字：12:30 的 "30"，或 "12" 后面紧跟 ":"
+    const idx = t.index!
+    if (idx > 0 && /[:：]/.test(text[idx - 1])) return false // "30" in "12:30"
+    const end = idx + t[1].length
+    if (end < text.length && /[:：]/.test(text[end])) return false // "12" in "12:30"
+    return true
+  })
   if (moneyish.length) return round2(parseFloat(moneyish[moneyish.length - 1][1]))
   return null
 }
@@ -413,18 +432,21 @@ function extractLocation(text: string): string | undefined {
 }
 
 const NOISE_RE = /\d+(?:\.\d+)?\s*(?:元|块钱?|¥|￥)?/gi
-const VERB_RE = /(?:吃了?|喝了?|买了?|点了?|花了?|来[一个份碗杯]|中午|下午|上午|晚上|今天|昨天|在\S{1,4})/g
+const VERB_RE = /(?:吃(?:了|饭|了饭)?|喝(?:了|水|了水)?|买了?|点了?|花了?|来[一个份碗杯]|中午|下午|上午|晚上|今天|昨天|在\S{1,4})/g
 const QUANTIFIER_FOOD_RE = /(?:吃了?|喝了?|买了?|点了?|来了?|煮了?|做了?|烤了?|炸了?|蒸了?|炒了?|嚼了?|啃了?|嗑了?)\s*(?:一|两|三|几|点|些)?\s*(?:碗|杯|个|份|根|串|盒|袋|瓶|块|片|盘|包|桶|罐|条|把|颗|粒|口|块儿)\s*([一-鿿]{1,6})/
+
+const QUANTITY_RE = /[一二两三四五六七八九十\d]+\s*[份碗杯个只盒袋瓶块片盘包桶罐条把颗粒串根]/g
 
 function extractFoodNames(text: string, foodHits: { match: string[]; name: string }[]): string[] {
   const lower = text.toLowerCase()
-  const segments = text.split(/[，,、；;]+/).map(s => s.trim()).filter(Boolean)
+  const segments = text.split(/[，,、；;。！？\n]+/).map(s => s.trim()).filter(Boolean)
   if (segments.length > 1) {
     const names: string[] = []
     for (const seg of segments) {
-      const clean = seg.replace(NOISE_RE, '').replace(VERB_RE, '').trim()
-      if (clean.length < 1 || clean.length > 12) continue
+      const clean = seg.replace(NOISE_RE, '').replace(VERB_RE, '').replace(QUANTITY_RE, '').replace(/[块元角毛]$/, '').trim()
+      if (clean.length < 2 || clean.length > 12) continue
       if (/^\d+$/.test(clean)) continue
+      if (!/[一-鿿]/.test(clean)) continue
       names.push(clean)
     }
     if (names.length > 0) return dedupe(names).slice(0, 4)
@@ -472,7 +494,7 @@ const INCOME_TITLE_MAP: [RegExp, string][] = [
 
 function buildTitle(args: { text: string; category: CategoryId; items: string[]; merchant?: string }): string {
   const { text, category, items, merchant } = args
-  if (items.length) return items.slice(0, 3).join('、')
+  if (items.length) return items.slice(0, 4).join('、')
   if (merchant) return merchant
   if (category === 'income') {
     for (const [re, label] of INCOME_TITLE_MAP) {
