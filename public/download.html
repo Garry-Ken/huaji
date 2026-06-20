@@ -92,7 +92,7 @@
     const GH = 'Garry-Ken/huaji';   // ⛳️ 你的仓库
     const rel = (name) => `https://github.com/${GH}/releases/latest/download/${name}`;
     const RELEASES = {
-      version: 'v0.1.1',
+      version: 'v0.2.0',
       android: rel('huaji-android.apk'),   // GitHub Actions 自动产出并发到 Releases
       mac:     rel('huaji-mac.dmg'),
       windows: rel('huaji-win.exe'),
@@ -106,13 +106,13 @@
 
     const PLATFORMS = [
       { id:'android', name:'安卓 Android', icon:ANDROID, sub:'下载 APK 直接安装', kind:'download', href:RELEASES.android,
-        file:'huaji-0.1.0.apk', hint:'微信里打不开？点右上「…」→用浏览器打开再下载。小米/红米若点了没反应：设置里关闭「纯净模式」，并允许浏览器「安装未知应用」。' },
+        file:'huaji-0.2.0.apk', hint:'微信里打不开？点右上「…」→用浏览器打开再下载。小米/红米若点了没反应：设置里关闭「纯净模式」，并允许浏览器「安装未知应用」。' },
       { id:'ios', name:'苹果 iPhone / iPad', icon:APPLE, sub:'通过 TestFlight 安装', kind:'external', href:RELEASES.iosTestFlight,
         hint:'iOS 不支持直链安装，需用 TestFlight（免费）或上架 App Store。' },
       { id:'mac', name:'Mac', icon:APPLE, sub:'下载 .dmg 安装', kind:'download', href:RELEASES.mac,
-        file:'huaji-0.1.0.dmg', hint:'若提示「已损坏，无法打开」：打开「终端」粘贴 xattr -cr /Applications/花迹.app 回车后，再打开即可（未签名应用的正常现象）。' },
+        file:'huaji-0.2.0.dmg', hint:'若提示「已损坏，无法打开」：打开「终端」粘贴 xattr -cr /Applications/花迹.app 回车后，再打开即可（未签名应用的正常现象）。' },
       { id:'windows', name:'Windows', icon:WIN, sub:'下载 .exe 安装', kind:'download', href:RELEASES.windows,
-        file:'huaji-0.1.0-setup.exe', hint:'若 SmartScreen 拦截：点「更多信息 → 仍要运行」。' },
+        file:'huaji-0.2.0-setup.exe', hint:'若 SmartScreen 拦截：点「更多信息 → 仍要运行」。' },
     ];
 
     function detect(){
