@@ -152,19 +152,27 @@ export function Paywall({ onResult }: { onResult?: (msg: string) => void }) {
 
 function PayQR({ src, label, name, sizeClass = 'w-32 h-32' }: { src: string; label: string; name?: string; sizeClass?: string }) {
   const [err, setErr] = useState(false)
+  const [zoom, setZoom] = useState(false)
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      {err ? (
-        <div className={`${sizeClass} rounded-xl border-2 border-dashed border-[#c7c7cc] flex items-center justify-center text-[10px] text-[#86868b] text-center px-2 leading-snug`}>
-          把图片放到<br />
-          <span className="font-mono break-all">{src}</span>
+    <>
+      <div className="flex flex-col items-center gap-1.5 cursor-pointer" onClick={() => !err && setZoom(true)}>
+        {err ? (
+          <div className={`${sizeClass} rounded-xl border-2 border-dashed border-[#c7c7cc] flex items-center justify-center text-[10px] text-[#86868b] text-center px-2 leading-snug`}>
+            把图片放到<br />
+            <span className="font-mono break-all">{src}</span>
+          </div>
+        ) : (
+          <img src={src} onError={() => setErr(true)} alt={label} className={`${sizeClass} rounded-xl object-contain bg-white border border-[#00000010]`} />
+        )}
+        <span className="text-[12px] font-medium">{label}</span>
+        {name && <span className="text-[10px] text-[#86868b] text-center leading-tight max-w-[8rem] truncate">{name}</span>}
+      </div>
+      {zoom && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setZoom(false)}>
+          <img src={src} alt={label} className="max-w-[85vw] max-h-[85vh] rounded-2xl shadow-2xl object-contain bg-white" />
         </div>
-      ) : (
-        <img src={src} onError={() => setErr(true)} alt={label} className={`${sizeClass} rounded-xl object-contain bg-white border border-[#00000010]`} />
       )}
-      <span className="text-[12px] font-medium">{label}</span>
-      {name && <span className="text-[10px] text-[#86868b] text-center leading-tight max-w-[8rem] truncate">{name}</span>}
-    </div>
+    </>
   )
 }
 
