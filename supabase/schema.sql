@@ -127,6 +127,34 @@ grant execute on function public.admin_grant(text, text)    to authenticated;
 grant execute on function public.is_admin()                 to authenticated;
 
 -- ============================================================================
+-- Phase 2: 云端同步
+-- ============================================================================
+
+-- 记录同步表：每笔记录一行，以 (user_id, record_id) 唯一
+create table if not exists public.records (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  record_id  text not null,
+  data       jsonb not null,
+  updated_at timestamptz not null default now(),
+  deleted    boolean not null default false,
+  unique(user_id, record_id)
+);
+
+alter table public.records enable row level security;
+
+-- 用户只能读写自己的记录
+drop policy if exists "users manage own records" on public.records;
+create policy "users manage own records" on public.records
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- 给 authenticated 角色开放 records 表的 select/insert/update
+grant select, insert, update on public.records to authenticated;
+
+-- ============================================================================
+-- 管理员设置
+--
 -- 创建你自己的账号(在 App 里用邮箱登录一次)后，把下面 <你的UID> 换成你的 uid 再跑一次：
 --   insert into public.admins(user_id) values ('<你的UID>') on conflict do nothing;
 -- 你的 UID 在 控制台 → Authentication → Users 里点开你的账号可见。

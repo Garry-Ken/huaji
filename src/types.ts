@@ -1,5 +1,7 @@
 // ---- 核心数据模型 ----
 
+export type TransactionType = 'expense' | 'income'
+
 export type CategoryId =
   | 'food'
   | 'transport'
@@ -10,6 +12,7 @@ export type CategoryId =
   | 'education'
   | 'communication'
   | 'social'
+  | 'income'
   | 'other'
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack'
@@ -27,10 +30,11 @@ export interface HealthResult {
   kcal: number // 估算热量 (kcal)
 }
 
-/** 一笔消费记录 */
+/** 一笔收支记录 */
 export interface Expense {
   id: string
-  amount: number // 金额（元）
+  type: TransactionType
+  amount: number // 金额（元，始终正数）
   category: CategoryId
   title: string // 简短标题，如 "麻辣烫"
   items: string[] // 明细项（饮食类尤其有用）
@@ -47,6 +51,7 @@ export interface Expense {
 
 /** 解析器产出（写入存储前的草稿） */
 export interface ParseResult {
+  type: TransactionType
   amount: number | null
   category: CategoryId
   title: string

@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import type { InputSource } from '../types'
-import { parseExpense } from '../lib/parser'
+import { parseMultiExpense } from '../lib/parser'
 import { yuan, relativeDay, timeShort } from '../lib/format'
+import { categoryMeta } from '../lib/categories'
 import { CategoryTag, MealTag, HealthLevelTag } from './bits'
 import { MicIcon, ClipboardIcon, SparkIcon, MapPinIcon, ClockIcon } from './icons'
 import { speechSupported, createRecognizer, type Recognizer } from '../lib/speech'
@@ -17,7 +18,7 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) 
   const taRef = useRef<HTMLTextAreaElement>(null)
 
   const display = text + interim
-  const preview = useMemo(() => (display.trim() ? parseExpense(display) : null), [display])
+  const previews = useMemo(() => (display.trim() ? parseMultiExpense(display) : []), [display])
 
   const commit = () => {
     const raw = display.trim()
@@ -88,35 +89,59 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) 
       />
 
       {/* 实时解析预览 */}
-      {preview && (
+      {previews.length === 1 && (() => {
+        const preview = previews[0]
+        return (
+          <div className="mt-2 rounded-2xl bg-[#f5f5f7] dark:bg-[#2c2c2e]/60 p-3 animate-pop">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-baseline gap-1">
+                {preview.amount != null ? (
+                  <>
+                    <span className={`text-[13px] ${preview.type === 'income' ? 'text-[#30d158]' : 'text-[#86868b]'}`}>{preview.type === 'income' ? '+¥' : '¥'}</span>
+                    <span className={`text-[26px] font-semibold tracking-tight ${preview.type === 'income' ? 'text-[#30d158]' : ''}`}>{yuan(preview.amount).slice(1)}</span>
+                  </>
+                ) : (
+                  <span className="text-[15px] text-[#ff9f0a] font-medium">未识别到金额 · 可记账后补填</span>
+                )}
+              </div>
+              <CategoryTag id={preview.category} />
+            </div>
+            <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap mt-2 text-[12px] text-[#636366] dark:text-[#aeaeb2]">
+              <span className="inline-flex items-center gap-1"><ClockIcon size={13} />{relativeDay(preview.occurredAt)} {timeShort(preview.occurredAt)}</span>
+              {preview.location && <span className="inline-flex items-center gap-1"><MapPinIcon size={13} />{preview.location}</span>}
+              {preview.merchant && <span>· {preview.merchant}</span>}
+              {preview.meal && <MealTag meal={preview.meal} />}
+              {preview.items.length > 0 && <span className="text-[#86868b]">{preview.items.join('、')}</span>}
+              {preview.health && <HealthLevelTag score={preview.health.score} />}
+            </div>
+            {preview.health && preview.health.suggestions[0] && (
+              <div className="mt-2 text-[12px] text-[#0a84ff] flex items-start gap-1">
+                <SparkIcon size={13} className="mt-0.5 shrink-0" />
+                <span>{preview.health.suggestions[0]}</span>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+      {previews.length > 1 && (
         <div className="mt-2 rounded-2xl bg-[#f5f5f7] dark:bg-[#2c2c2e]/60 p-3 animate-pop">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-baseline gap-1">
-              {preview.amount != null ? (
-                <>
-                  <span className="text-[13px] text-[#86868b]">¥</span>
-                  <span className="text-[26px] font-semibold tracking-tight">{yuan(preview.amount).slice(1)}</span>
-                </>
-              ) : (
-                <span className="text-[15px] text-[#ff9f0a] font-medium">未识别到金额 · 可记账后补填</span>
-              )}
-            </div>
-            <CategoryTag id={preview.category} />
+          <div className="text-[12px] text-[#86868b] mb-2">识别到 {previews.length} 笔记录</div>
+          <div className="space-y-1.5">
+            {previews.map((p, i) => {
+              const cat = categoryMeta(p.category)
+              return (
+                <div key={i} className="flex items-center gap-2 text-[14px]">
+                  <span>{cat.emoji}</span>
+                  <span className="text-[13px]" style={{ color: cat.color }}>{cat.label}</span>
+                  {p.meal && <MealTag meal={p.meal} />}
+                  <span className="flex-1" />
+                  <span className={`font-semibold tabular-nums ${p.type === 'income' ? 'text-[#30d158]' : ''}`}>
+                    {p.amount != null ? (p.type === 'income' ? '+' : '') + yuan(p.amount) : '—'}
+                  </span>
+                </div>
+              )
+            })}
           </div>
-          <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap mt-2 text-[12px] text-[#636366] dark:text-[#aeaeb2]">
-            <span className="inline-flex items-center gap-1"><ClockIcon size={13} />{relativeDay(preview.occurredAt)} {timeShort(preview.occurredAt)}</span>
-            {preview.location && <span className="inline-flex items-center gap-1"><MapPinIcon size={13} />{preview.location}</span>}
-            {preview.merchant && <span>· {preview.merchant}</span>}
-            {preview.meal && <MealTag meal={preview.meal} />}
-            {preview.items.length > 0 && <span className="text-[#86868b]">{preview.items.join('、')}</span>}
-            {preview.health && <HealthLevelTag score={preview.health.score} />}
-          </div>
-          {preview.health && preview.health.suggestions[0] && (
-            <div className="mt-2 text-[12px] text-[#0a84ff] flex items-start gap-1">
-              <SparkIcon size={13} className="mt-0.5 shrink-0" />
-              <span>{preview.health.suggestions[0]}</span>
-            </div>
-          )}
         </div>
       )}
 

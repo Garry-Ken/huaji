@@ -8,6 +8,10 @@ export function yuan(n: number): string {
   return '¥' + str
 }
 
+export function signedYuan(n: number, type: 'income' | 'expense'): string {
+  return type === 'income' ? '+' + yuan(n) : yuan(n)
+}
+
 /** 只要数字部分（用于大号展示，符号单独放） */
 export function yuanNum(n: number): string {
   return yuan(n).slice(1)

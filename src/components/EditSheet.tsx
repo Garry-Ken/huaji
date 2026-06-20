@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { CategoryId, Expense } from '../types'
+import type { CategoryId, Expense, TransactionType } from '../types'
 import { CATEGORY_LIST } from '../lib/categories'
 import { analyzeMeal } from '../lib/health'
 import { XIcon, TrashIcon, CheckIcon } from './icons'
@@ -21,6 +21,7 @@ export function EditSheet({
   onSave: (e: Expense) => void
   onDelete?: (id: string) => void
 }) {
+  const [txType, setTxType] = useState<TransactionType>(expense.type ?? 'expense')
   const [amount, setAmount] = useState(String(expense.amount ?? ''))
   const [title, setTitle] = useState(expense.title)
   const [category, setCategory] = useState<CategoryId>(expense.category)
@@ -31,15 +32,16 @@ export function EditSheet({
   const save = () => {
     const amt = parseFloat(amount) || 0
     const occurredAt = when ? new Date(when).getTime() : expense.occurredAt
-    const isFood = category === 'food'
+    const isFood = txType !== 'income' && category === 'food'
     const health = isFood
       ? analyzeMeal([title, note, expense.items.join(' '), expense.rawText].join(' '))
       : undefined
     onSave({
       ...expense,
+      type: txType,
       amount: amt,
       title: title.trim() || expense.rawText.slice(0, 12),
-      category,
+      category: txType === 'income' ? 'income' : category,
       occurredAt,
       location: location.trim() || undefined,
       note: note.trim() || undefined,
@@ -55,6 +57,12 @@ export function EditSheet({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[17px] font-semibold">{onDelete ? '编辑记录' : '新增记录'}</h3>
           <button onClick={onClose} className="btn-ghost !p-2 !rounded-full"><XIcon size={18} /></button>
+        </div>
+
+        {/* 收/支 */}
+        <div className="seg w-full mb-4">
+          <button onClick={() => { setTxType('expense'); if (category === 'income') setCategory('other') }} className={`seg-item flex-1 ${txType === 'expense' ? 'seg-item-active' : ''}`}>支出</button>
+          <button onClick={() => { setTxType('income'); setCategory('income') }} className={`seg-item flex-1 ${txType === 'income' ? 'seg-item-active' : ''}`}>收入</button>
         </div>
 
         {/* 金额 */}
@@ -76,23 +84,27 @@ export function EditSheet({
           placeholder="如 麻辣烫"
         />
 
-        {/* 分类 */}
-        <label className="block text-[12px] text-[#86868b] mb-1.5">分类</label>
-        <div className="grid grid-cols-5 gap-2 mb-4">
-          {CATEGORY_LIST.map((c) => {
-            const active = c.id === category
-            return (
-              <button
-                key={c.id} onClick={() => setCategory(c.id)}
-                className="flex flex-col items-center gap-1 py-2 rounded-xl text-[11px] transition-all"
-                style={active ? { background: c.color + '22', color: c.color, fontWeight: 600 } : undefined}
-              >
-                <span className="text-[18px]">{c.emoji}</span>
-                {c.label}
-              </button>
-            )
-          })}
-        </div>
+        {/* 分类（收入时隐藏，固定 income） */}
+        {txType !== 'income' && (
+          <>
+            <label className="block text-[12px] text-[#86868b] mb-1.5">分类</label>
+            <div className="grid grid-cols-5 gap-2 mb-4">
+              {CATEGORY_LIST.filter(c => c.id !== 'income').map((c) => {
+                const active = c.id === category
+                return (
+                  <button
+                    key={c.id} onClick={() => setCategory(c.id)}
+                    className="flex flex-col items-center gap-1 py-2 rounded-xl text-[11px] transition-all"
+                    style={active ? { background: c.color + '22', color: c.color, fontWeight: 600 } : undefined}
+                  >
+                    <span className="text-[18px]">{c.emoji}</span>
+                    {c.label}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
 
         {/* 时间 + 地点 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">

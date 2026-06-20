@@ -22,6 +22,7 @@ function build(text: string, base: Date, source: InputSource, hour?: number): Ex
   const occurredAt = p.occurredAt
   return {
     id: uid(),
+    type: p.type ?? 'expense',
     amount: p.amount ?? rand(10, 60),
     category: p.category,
     title: p.title || text.slice(0, 10),

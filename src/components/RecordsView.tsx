@@ -4,7 +4,7 @@ import { categoryMeta } from '../lib/categories'
 import { yuan, timeShort, relativeDay } from '../lib/format'
 import { startOfDay } from '../lib/date'
 import { HealthRing, MealTag } from './bits'
-import { MapPinIcon, MicIcon, ClipboardIcon } from './icons'
+import { MapPinIcon, MicIcon, ClipboardIcon, SearchIcon, XIcon } from './icons'
 import { InputBar } from './InputBar'
 
 const SOURCE_LABEL: Record<InputSource, string> = { text: '手输', voice: '语音', paste: '粘贴', manual: '手动' }
@@ -36,7 +36,9 @@ function Row({ e, onClick }: { e: Expense; onClick: () => void }) {
         </div>
       </div>
       {e.health && <HealthRing score={e.health.score} size={38} />}
-      <div className="font-semibold text-[16px] tabular-nums shrink-0">{yuan(e.amount)}</div>
+      <div className={`font-semibold text-[16px] tabular-nums shrink-0 ${e.type === 'income' ? 'text-[#30d158]' : ''}`}>
+        {e.type === 'income' ? '+' : ''}{yuan(e.amount)}
+      </div>
     </button>
   )
 }
@@ -57,7 +59,23 @@ export function RecordsView({
   onClearAll?: () => void
 }) {
   const [limit, setLimit] = useState(40)
-  const visible = expenses.slice(0, limit)
+  const [search, setSearch] = useState('')
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return expenses
+    const q = search.trim().toLowerCase()
+    return expenses.filter(e =>
+      e.title.toLowerCase().includes(q) ||
+      e.rawText.toLowerCase().includes(q) ||
+      categoryMeta(e.category).label.includes(q) ||
+      e.merchant?.toLowerCase().includes(q) ||
+      e.location?.toLowerCase().includes(q) ||
+      e.note?.toLowerCase().includes(q) ||
+      e.items.some(i => i.toLowerCase().includes(q))
+    )
+  }, [expenses, search])
+
+  const visible = filtered.slice(0, limit)
 
   const groups = useMemo(() => {
     const map = new Map<number, Expense[]>()
@@ -74,7 +92,29 @@ export function RecordsView({
     <div className="space-y-4">
       <InputBar onAdd={onAdd} />
 
-      {expenses.length === 0 ? (
+      {expenses.length > 5 && (
+        <div className="relative">
+          <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#86868b]" />
+          <input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setLimit(40) }}
+            placeholder="搜索记录…"
+            className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] pl-9 pr-8 py-2.5 text-[14px] outline-none"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#86868b]">
+              <XIcon size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {search && filtered.length === 0 ? (
+        <div className="card p-10 text-center text-[#86868b]">
+          <div className="text-[32px] mb-2">🔍</div>
+          <div>没有找到「{search}」相关的记录</div>
+        </div>
+      ) : expenses.length === 0 ? (
         <div className="card p-10 text-center text-[#86868b]">
           <div className="text-[40px] mb-2">🧾</div>
           <div>还没有记录，试着在上面记一笔吧</div>
@@ -96,14 +136,18 @@ export function RecordsView({
             </div>
           )}
           {groups.map(([day, items]) => {
-            const total = items.reduce((s, e) => s + e.amount, 0)
+            const expenseTotal = items.filter(e => e.type !== 'income').reduce((s, e) => s + e.amount, 0)
+            const incomeTotal = items.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
             return (
               <div key={day} className="card overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 bg-[#f5f5f7]/70 dark:bg-[#2c2c2e]/40">
                   <span className="text-[13px] font-medium text-[#636366] dark:text-[#aeaeb2]">
                     {relativeDay(day)} · {new Date(day).getMonth() + 1}月{new Date(day).getDate()}日
                   </span>
-                  <span className="text-[13px] font-semibold text-[#86868b]">支出 {yuan(total)}</span>
+                  <span className="text-[13px] font-semibold text-[#86868b]">
+                    支出 {yuan(expenseTotal)}
+                    {incomeTotal > 0 && <span className="text-[#30d158] ml-2">收入 +{yuan(incomeTotal)}</span>}
+                  </span>
                 </div>
                 <div className="divide-y divide-[#00000008] dark:divide-[#ffffff0d]">
                   {items.map((e) => (
@@ -114,9 +158,9 @@ export function RecordsView({
             )
           })}
 
-          {limit < expenses.length && (
+          {limit < filtered.length && (
             <button onClick={() => setLimit((l) => l + 60)} className="btn-ghost w-full justify-center">
-              加载更多（还有 {expenses.length - limit} 笔）
+              加载更多（还有 {filtered.length - limit} 笔）
             </button>
           )}
         </div>

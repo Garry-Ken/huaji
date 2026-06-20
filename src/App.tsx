@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Expense, InputSource } from './types'
-import { parseExpense } from './lib/parser'
-import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid, hasSampleFlag, setSampleFlag, clearSampleFlag } from './lib/storage'
+import { parseMultiExpense } from './lib/parser'
+import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid, hasSampleFlag, setSampleFlag, clearSampleFlag, loadBudget } from './lib/storage'
 import { generateSample } from './lib/sampleData'
 import { RecordsView } from './components/RecordsView'
 import { Dashboard } from './components/Dashboard'
@@ -86,10 +86,14 @@ export default function App() {
   }
 
   const addFromText = (raw: string, source: InputSource) => {
-    const parsed = parseExpense(raw)
-    const e = makeExpense(parsed, raw, source)
-    update([e, ...expenses])
-    showToast(parsed.amount != null ? '已记录 ✓' : '已记录 · 记得补填金额')
+    const results = parseMultiExpense(raw)
+    const newItems = results.map(p => makeExpense(p, raw, source))
+    update([...newItems, ...expenses])
+    if (results.length === 1) {
+      showToast(results[0].amount != null ? '已记录 ✓' : '已记录 · 记得补填金额')
+    } else {
+      showToast(`已记录 ${results.length} 笔 ✓`)
+    }
   }
 
   const saveEdit = (e: Expense) => {
@@ -109,14 +113,22 @@ export default function App() {
 
   const openNew = () => {
     const now = Date.now()
-    setEditing({ id: uid(), amount: 0, category: 'other', title: '', items: [], occurredAt: now, createdAt: now, source: 'manual', rawText: '' })
+    setEditing({ id: uid(), type: 'expense', amount: 0, category: 'other', title: '', items: [], occurredAt: now, createdAt: now, source: 'manual', rawText: '' })
     setEditingNew(true)
   }
 
   const total30 = useMemo(() => {
     const since = Date.now() - 30 * 86400000
-    return expenses.filter((e) => e.occurredAt >= since).reduce((s, e) => s + e.amount, 0)
+    return expenses.filter((e) => e.occurredAt >= since && e.type !== 'income').reduce((s, e) => s + e.amount, 0)
   }, [expenses])
+
+  const monthExpense = useMemo(() => {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    return expenses.filter(e => e.occurredAt >= start && e.type !== 'income').reduce((s, e) => s + e.amount, 0)
+  }, [expenses])
+
+  const budget = loadBudget()
 
   return (
     <div className="min-h-full flex flex-col">
@@ -128,7 +140,18 @@ export default function App() {
           </div>
           <div className="leading-none">
             <div className="font-semibold text-[16px]">花迹</div>
-            <div className="text-[11px] text-[#86868b] mt-0.5">近30天 ¥{Math.round(total30).toLocaleString('zh-CN')}</div>
+            {budget ? (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="w-16 h-1.5 rounded-full bg-[#00000010] dark:bg-[#ffffff14] overflow-hidden">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (monthExpense / budget) * 100)}%`, background: monthExpense > budget ? '#ff3b30' : monthExpense > budget * 0.8 ? '#ff9f0a' : '#30d158' }} />
+                </div>
+                <span className={`text-[11px] font-medium ${monthExpense > budget ? 'text-[#ff3b30]' : 'text-[#86868b]'}`}>
+                  {Math.round((monthExpense / budget) * 100)}%
+                </span>
+              </div>
+            ) : (
+              <div className="text-[11px] text-[#86868b] mt-0.5">近30天 ¥{Math.round(total30).toLocaleString('zh-CN')}</div>
+            )}
           </div>
 
           {/* 桌面端导航（包一层，避免 .seg 的 display:flex 覆盖 hidden） */}
@@ -167,9 +190,9 @@ export default function App() {
       {/* 内容 */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-5 pb-28 sm:pb-10">
         {tab === 'records' && <RecordsView expenses={expenses} onAdd={addFromText} onEdit={(e) => { setEditing(e); setEditingNew(false) }} onLoadSample={loadSample} sampleMode={sampleMode} onClearAll={clearAllData} />}
-        {tab === 'stats' && <Dashboard expenses={expenses} onGotoHealth={() => setTab('health')} />}
+        {tab === 'stats' && <Dashboard expenses={expenses} onGotoHealth={() => setTab('health')} budget={budget} />}
         {tab === 'health' && <HealthPanel expenses={expenses} />}
-        {tab === 'account' && <AccountView expenses={expenses} onToast={showToast} onClearData={clearAllData} />}
+        {tab === 'account' && <AccountView expenses={expenses} onToast={showToast} onClearData={clearAllData} onReload={(records) => { setExpenses(records); persist(records) }} />}
       </main>
 
       {/* 移动端底部导航 */}

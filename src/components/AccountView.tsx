@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Expense } from '../types'
 import { useEntitlement, type Plan } from '../lib/entitlement'
 import { categoryMeta } from '../lib/categories'
-import { CrownIcon, LockIcon, CheckIcon, DownloadIcon, CloudIcon, SparkIcon, ChevronRight, UserIcon } from './icons'
+import { exportToJSON, importFromJSON, loadBudget, saveBudget, persist, sortByTime } from '../lib/storage'
+import { pushToCloud, pullFromCloud, mergeRecords, getLastSyncDisplay } from '../lib/sync'
+import { CrownIcon, LockIcon, CheckIcon, DownloadIcon, CloudIcon, SparkIcon, ChevronRight, UserIcon, UploadIcon, ShieldIcon, TargetIcon, RefreshIcon, InfoIcon } from './icons'
 
 const PRO_ROWS = [
   { key: 'period', label: '季度 / 半年 / 年度深度分析' },
@@ -14,15 +16,17 @@ const PRO_ROWS = [
   { key: 'history', label: '无限历史记录' },
 ]
 
+const APP_VERSION = '0.2.0'
+
 function downloadCSV(expenses: Expense[]) {
-  const head = ['消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
+  const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
   const esc = (v: unknown) => {
     const s = String(v ?? '')
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   const fmt = (ts: number) => new Date(ts).toLocaleString('zh-CN', { hour12: false })
   const rows = expenses.map((e) =>
-    [fmt(e.occurredAt), fmt(e.createdAt), categoryMeta(e.category).label, e.title, e.amount, e.location ?? '', e.merchant ?? '', e.meal ?? '', e.health?.score ?? '', e.rawText].map(esc).join(','),
+    [e.type === 'income' ? '收入' : '支出', fmt(e.occurredAt), fmt(e.createdAt), categoryMeta(e.category).label, e.title, e.amount, e.location ?? '', e.merchant ?? '', e.meal ?? '', e.health?.score ?? '', e.rawText].map(esc).join(','),
   )
   const csv = '﻿' + [head.join(','), ...rows].join('\n')
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
@@ -37,9 +41,12 @@ function planLabel(p?: string) {
   return p === 'monthly' ? '月度' : p === 'quarterly' ? '季度' : p === 'annual' ? '年度' : 'Pro'
 }
 
-export function AccountView({ expenses, onToast, onClearData }: { expenses: Expense[]; onToast: (m: string) => void; onClearData: () => void }) {
+export function AccountView({ expenses, onToast, onClearData, onReload }: { expenses: Expense[]; onToast: (m: string) => void; onClearData: () => void; onReload: (records: Expense[]) => void }) {
   const ent = useEntitlement()
   const { status, isPro, daysLeft, aiEnhance, setAiEnhance, openPaywall, user, isAdmin, signOut, openLogin, proPlan, proExpiresAt } = ent
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [budgetOpen, setBudgetOpen] = useState(false)
 
   const statusMeta =
     status === 'pro'
@@ -109,24 +116,95 @@ export function AccountView({ expenses, onToast, onClearData }: { expenses: Expe
         </div>
       </div>
 
+      {/* 月度预算 */}
+      <div className="card overflow-hidden divide-y divide-[#00000008] dark:divide-[#ffffff0d]">
+        <button onClick={() => setBudgetOpen(true)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e]/40 transition-colors">
+          <span className="text-[#ff9f0a]"><TargetIcon size={20} /></span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[15px] font-medium">月度预算</div>
+            <div className="text-[12px] text-[#86868b]">{loadBudget() ? `¥${loadBudget()!.toLocaleString('zh-CN')}/月` : '设置每月预算，超支提醒'}</div>
+          </div>
+          <ChevronRight size={18} className="text-[#c7c7cc] shrink-0" />
+        </button>
+      </div>
+
       {/* 偏好与操作 */}
       <div className="card overflow-hidden divide-y divide-[#00000008] dark:divide-[#ffffff0d]">
         <div className="flex items-center gap-3 px-4 py-3.5">
           <span className="text-[#0a84ff]"><SparkIcon size={20} /></span>
           <div className="flex-1 min-w-0">
             <div className="text-[15px] font-medium flex items-center gap-1.5">AI 智能增强 {!isPro && <LockIcon size={13} className="text-[#c7c7cc]" />}</div>
-            <div className="text-[12px] text-[#86868b]">用 Claude 复核解析与健康建议（Phase 2 接入）</div>
+            <div className="text-[12px] text-[#86868b]">用 Claude 复核解析与健康建议</div>
           </div>
           <Toggle on={isPro && aiEnhance} disabled={!isPro} onClick={() => (isPro ? setAiEnhance(!aiEnhance) : openPaywall('AI 智能增强是 Pro 功能'))} />
         </div>
-        <Row icon={<CloudIcon size={20} />} title="跨设备云同步" sub={isPro ? '即将接入（Phase 2）' : '升级后可在多设备同步'} locked={!isPro} onClick={gated('云同步是 Pro 功能', () => onToast('云同步即将接入'))} />
+      </div>
+
+      {/* 数据管理 */}
+      <div className="card overflow-hidden divide-y divide-[#00000008] dark:divide-[#ffffff0d]">
+        <Row icon={<CloudIcon size={20} />} title="云端同步" sub={syncing ? '同步中…' : (getLastSyncDisplay() ? `上次同步 ${getLastSyncDisplay()}` : '登录后可同步到云端')} locked={!isPro} onClick={gated('云同步是 Pro 功能', async () => {
+          if (!user) { onToast('请先登录'); return }
+          setSyncing(true)
+          const pushRes = await pushToCloud(expenses)
+          setSyncing(false)
+          onToast(pushRes.ok ? pushRes.msg : pushRes.msg)
+        })} />
+        <Row icon={<RefreshIcon size={20} />} title="从云端恢复" sub="拉取云端数据合并到本地" locked={!isPro} onClick={gated('云同步是 Pro 功能', async () => {
+          if (!user) { onToast('请先登录'); return }
+          setSyncing(true)
+          const pullRes = await pullFromCloud()
+          setSyncing(false)
+          if (!pullRes.ok) { onToast(pullRes.msg); return }
+          const merged = sortByTime(mergeRecords(expenses, pullRes.records))
+          onReload(merged)
+          persist(merged)
+          onToast(`已合并，共 ${merged.length} 条记录`)
+        })} />
         <Row icon={<DownloadIcon size={20} />} title="导出 CSV" sub={`当前 ${expenses.length} 条记录`} locked={!isPro} onClick={gated('数据导出是 Pro 功能', () => { downloadCSV(expenses); onToast('已导出 CSV') })} />
+      </div>
+
+      {/* 备份（免费功能） */}
+      <div className="card overflow-hidden divide-y divide-[#00000008] dark:divide-[#ffffff0d]">
+        <Row icon={<DownloadIcon size={20} />} title="备份数据" sub={`导出 JSON 到本地（${expenses.length} 条）`} locked={false} onClick={() => { exportToJSON(expenses); onToast('已导出备份文件') }} />
+        <Row icon={<UploadIcon size={20} />} title="恢复数据" sub="从 JSON 备份文件恢复" locked={false} onClick={() => fileRef.current?.click()} />
+        <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={async (e) => {
+          const file = e.target.files?.[0]
+          if (!file) return
+          try {
+            const records = await importFromJSON(file)
+            const merged = sortByTime(mergeRecords(expenses, records))
+            onReload(merged)
+            persist(merged)
+            onToast(`已恢复 ${records.length} 条，合并后共 ${merged.length} 条`)
+          } catch (err) {
+            onToast(err instanceof Error ? err.message : '恢复失败')
+          }
+          e.target.value = ''
+        }} />
       </div>
 
       {/* 店主面板：仅店主账号(服务端校验)可见 */}
       {isAdmin && <AdminPanel onToast={onToast} onClearData={onClearData} />}
 
-      <div className="text-center text-[12px] text-[#86868b] py-2">花迹 v0.1.1 · 数据本地优先 · Pro 由账号同步</div>
+      {/* 关于 */}
+      <div className="card overflow-hidden divide-y divide-[#00000008] dark:divide-[#ffffff0d]">
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          <span className="text-[#636366] dark:text-[#aeaeb2]"><InfoIcon size={20} /></span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[15px] font-medium">关于花迹</div>
+            <div className="text-[12px] text-[#86868b]">v{APP_VERSION} · 本地优先 · 隐私安全</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          <span className="text-[#636366] dark:text-[#aeaeb2]"><ShieldIcon size={20} /></span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[15px] font-medium">隐私保护</div>
+            <div className="text-[12px] text-[#86868b] leading-relaxed">数据默认存储在您的设备本地，不会上传到任何服务器。开启云同步后，数据加密传输至您的专属账户，仅您本人可访问。</div>
+          </div>
+        </div>
+      </div>
+
+      {budgetOpen && <BudgetSheet onClose={() => setBudgetOpen(false)} onToast={onToast} />}
     </div>
   )
 }
@@ -210,6 +288,53 @@ function Row({ icon, title, sub, locked, onClick }: { icon: ReactNode; title: st
       </div>
       <ChevronRight size={18} className="text-[#c7c7cc] shrink-0" />
     </button>
+  )
+}
+
+function BudgetSheet({ onClose, onToast }: { onClose: () => void; onToast: (m: string) => void }) {
+  const current = loadBudget()
+  const [value, setValue] = useState(current ? String(current) : '')
+
+  const save = () => {
+    const n = parseFloat(value)
+    if (value.trim() && (isNaN(n) || n <= 0)) { onToast('请输入有效金额'); return }
+    saveBudget(value.trim() ? n : null)
+    onToast(value.trim() ? `已设置月度预算 ¥${n.toLocaleString('zh-CN')}` : '已取消月度预算')
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full sm:max-w-sm card !rounded-t-3xl sm:!rounded-3xl rounded-b-none p-6 animate-pop safe-bottom">
+        <h3 className="text-[17px] font-semibold mb-1">月度预算</h3>
+        <p className="text-[13px] text-[#86868b] mb-4">设置后在首页和统计页显示预算进度</p>
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-[22px] text-[#86868b]">¥</span>
+          <input
+            type="number" inputMode="decimal" autoFocus
+            value={value} onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') save() }}
+            placeholder="如 3000"
+            className="input-bare text-[28px] font-semibold"
+          />
+          <span className="text-[14px] text-[#86868b]">/月</span>
+        </div>
+        <div className="flex gap-2 flex-wrap mb-4">
+          {[1000, 2000, 3000, 5000, 8000].map(n => (
+            <button key={n} onClick={() => setValue(String(n))} className={`btn-ghost text-[13px] ${value === String(n) ? '!bg-[#0a84ff]/10 !text-[#0a84ff]' : ''}`}>
+              ¥{n.toLocaleString('zh-CN')}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          {current && <button onClick={() => { saveBudget(null); onToast('已取消月度预算'); onClose() }} className="btn-ghost !text-[#ff3b30]">取消预算</button>}
+          <div className="flex-1" />
+          <button onClick={onClose} className="btn-ghost">取消</button>
+          <button onClick={save} className="btn-primary"><CheckIcon size={18} />保存</button>
+        </div>
+      </div>
+    </div>
   )
 }
 

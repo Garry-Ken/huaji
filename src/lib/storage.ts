@@ -13,7 +13,8 @@ export function load(): Expense[] {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
     const arr = JSON.parse(raw)
-    return Array.isArray(arr) ? (arr as Expense[]) : []
+    if (!Array.isArray(arr)) return []
+    return arr.map((e: Record<string, unknown>) => ({ type: 'expense', ...e }) as Expense)
   } catch {
     return []
   }
@@ -47,11 +48,65 @@ export function clearSampleFlag(): void {
   try { localStorage.removeItem(SAMPLE_FLAG) } catch { /* ignore */ }
 }
 
+// ---------- 月度预算 ----------
+const BUDGET_KEY = 'huaji.budget.v1'
+export function loadBudget(): number | null {
+  const v = localStorage.getItem(BUDGET_KEY)
+  return v ? parseFloat(v) : null
+}
+export function saveBudget(amount: number | null): void {
+  if (amount == null) localStorage.removeItem(BUDGET_KEY)
+  else localStorage.setItem(BUDGET_KEY, String(amount))
+}
+
+// ---------- JSON 备份/恢复 ----------
+export function exportToJSON(expenses: Expense[]): void {
+  const data = { version: 1, app: '花迹', exportedAt: new Date().toISOString(), count: expenses.length, records: expenses }
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `花迹备份_${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export function importFromJSON(file: File): Promise<Expense[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result as string)
+        const records = parsed.records ?? parsed
+        if (!Array.isArray(records)) throw new Error('无效的备份文件')
+        const validated = records.map((r: Record<string, unknown>) => ({
+          type: 'expense',
+          ...r,
+          id: (r.id as string) || uid(),
+          amount: Number(r.amount) || 0,
+          category: r.category || 'other',
+          title: String(r.title ?? ''),
+          items: Array.isArray(r.items) ? r.items : [],
+          occurredAt: Number(r.occurredAt) || Date.now(),
+          createdAt: Number(r.createdAt) || Date.now(),
+          source: r.source || 'manual',
+          rawText: String(r.rawText ?? ''),
+        })) as Expense[]
+        resolve(validated)
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('解析备份文件失败'))
+      }
+    }
+    reader.onerror = () => reject(new Error('读取文件失败'))
+    reader.readAsText(file)
+  })
+}
+
 /** 由解析草稿生成正式记录 */
 export function makeExpense(parse: ParseResult, rawText: string, source: InputSource): Expense {
   const now = Date.now()
   return {
     id: uid(),
+    type: parse.type ?? 'expense',
     amount: parse.amount ?? 0,
     category: parse.category,
     title: parse.title || rawText.slice(0, 12),

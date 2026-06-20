@@ -18,7 +18,7 @@ const KINDS: { id: PeriodKind; label: string }[] = [
   { id: 'year', label: '年度' },
 ]
 
-export function Dashboard({ expenses, onGotoHealth }: { expenses: Expense[]; onGotoHealth?: () => void }) {
+export function Dashboard({ expenses, onGotoHealth, budget }: { expenses: Expense[]; onGotoHealth?: () => void; budget?: number | null }) {
   const [kind, setKind] = useState<PeriodKind>('month')
   const [anchor, setAnchor] = useState<number>(Date.now())
   const { isPro, openPaywall } = useEntitlement()
@@ -37,43 +37,42 @@ export function Dashboard({ expenses, onGotoHealth }: { expenses: Expense[]; onG
   const view = useMemo(() => {
     const { start, end } = periodRange(kind, anchor)
     const inRange = expenses.filter((e) => e.occurredAt >= start && e.occurredAt < end)
-    const total = inRange.reduce((s, e) => s + e.amount, 0)
+    const expenseItems = inRange.filter(e => e.type !== 'income')
+    const incomeItems = inRange.filter(e => e.type === 'income')
+    const totalExpense = expenseItems.reduce((s, e) => s + e.amount, 0)
+    const totalIncome = incomeItems.reduce((s, e) => s + e.amount, 0)
 
     const prev = periodRange(kind, shift(kind, anchor, -1).getTime())
-    const prevTotal = expenses
-      .filter((e) => e.occurredAt >= prev.start && e.occurredAt < prev.end)
+    const prevExpense = expenses
+      .filter((e) => e.occurredAt >= prev.start && e.occurredAt < prev.end && e.type !== 'income')
       .reduce((s, e) => s + e.amount, 0)
 
-    // 分类聚合
     const byCat = new Map<string, number>()
-    for (const e of inRange) byCat.set(e.category, (byCat.get(e.category) ?? 0) + e.amount)
+    for (const e of expenseItems) byCat.set(e.category, (byCat.get(e.category) ?? 0) + e.amount)
     const cats = [...byCat.entries()]
       .map(([id, value]) => ({ id, value, meta: categoryMeta(id as never) }))
       .sort((a, b) => b.value - a.value)
 
-    // 子桶（柱状）
     const buckets = subBuckets(kind, anchor)
     const now = Date.now()
     const bars = buckets.map((b) => ({
       label: b.label,
-      value: inRange.filter((e) => e.occurredAt >= b.start && e.occurredAt < b.end).reduce((s, e) => s + e.amount, 0),
+      value: expenseItems.filter((e) => e.occurredAt >= b.start && e.occurredAt < b.end).reduce((s, e) => s + e.amount, 0),
     }))
     const highlightIndex = buckets.findIndex((b) => now >= b.start && now < b.end)
 
-    // 日均
     const elapsedEnd = Math.min(now, end)
     const days = Math.max(1, Math.ceil((elapsedEnd - start) / DAY))
-    const perDay = total / days
+    const perDay = totalExpense / days
 
-    // 饮食健康
     const health = aggregateHealth(inRange.filter((e) => e.category === 'food'))
 
     const atPresent = end > now
-    return { start, end, inRange, total, prevTotal, cats, bars, highlightIndex, perDay, count: inRange.length, health, atPresent }
+    return { start, end, inRange, totalExpense, totalIncome, prevExpense, cats, bars, highlightIndex, perDay, count: expenseItems.length, health, atPresent }
   }, [expenses, kind, anchor])
 
   const slices: Slice[] = view.cats.map((c) => ({ label: c.meta.label, value: c.value, color: c.meta.color }))
-  const delta = view.prevTotal > 0 ? ((view.total - view.prevTotal) / view.prevTotal) * 100 : null
+  const delta = view.prevExpense > 0 ? ((view.totalExpense - view.prevExpense) / view.prevExpense) * 100 : null
   const barUnit = kind === 'day' ? '时段' : kind === 'week' || kind === 'month' ? '每日' : '每月'
 
   return (
@@ -116,10 +115,20 @@ export function Dashboard({ expenses, onGotoHealth }: { expenses: Expense[]; onG
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <div className="text-[13px] text-[#86868b]">总支出</div>
-            <div className="text-[34px] font-bold tracking-tight leading-tight">{yuan(view.total)}</div>
+            <div className="text-[34px] font-bold tracking-tight leading-tight">{yuan(view.totalExpense)}</div>
             {delta != null && (
               <div className={`text-[13px] mt-0.5 ${delta > 0 ? 'text-[#ff3b30]' : 'text-[#30d158]'}`}>
                 {delta > 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(0)}% 较上一{KINDS.find((k) => k.id === kind)?.label}
+              </div>
+            )}
+            {view.totalIncome > 0 && (
+              <div className="mt-2 text-[13px]">
+                <span className="text-[#86868b]">总收入 </span>
+                <span className="text-[#30d158] font-semibold">+{yuan(view.totalIncome)}</span>
+                <span className="text-[#86868b] ml-2">净额 </span>
+                <span className={`font-semibold ${view.totalIncome >= view.totalExpense ? 'text-[#30d158]' : 'text-[#ff3b30]'}`}>
+                  {view.totalIncome >= view.totalExpense ? '+' : '-'}{yuan(Math.abs(view.totalIncome - view.totalExpense))}
+                </span>
               </div>
             )}
           </div>
@@ -139,7 +148,7 @@ export function Dashboard({ expenses, onGotoHealth }: { expenses: Expense[]; onG
         <div className="grid grid-cols-3 gap-2.5 mt-4">
           <StatTile label="日均" value={yuan(view.perDay)} />
           <StatTile label="笔数" value={view.count} />
-          <StatTile label="单笔均" value={yuan(view.count ? view.total / view.count : 0)} />
+          <StatTile label="单笔均" value={yuan(view.count ? view.totalExpense / view.count : 0)} />
         </div>
       </div>
 
@@ -152,6 +161,33 @@ export function Dashboard({ expenses, onGotoHealth }: { expenses: Expense[]; onG
         <Bars data={view.bars} highlightIndex={view.highlightIndex} formatValue={(v) => yuan(v)} />
       </div>
 
+      {/* 预算进度（月度视图 + 有预算时显示） */}
+      {budget && budget > 0 && kind === 'month' && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[15px] font-semibold">月度预算</h3>
+            <span className="text-[13px] text-[#86868b]">{yuan(view.totalExpense)} / {yuan(budget)}</span>
+          </div>
+          <div className="h-3 rounded-full bg-[#00000008] dark:bg-[#ffffff12] overflow-hidden mb-2">
+            <div className="h-full rounded-full transition-all" style={{
+              width: `${Math.min(100, (view.totalExpense / budget) * 100)}%`,
+              background: view.totalExpense > budget ? '#ff3b30' : view.totalExpense > budget * 0.8 ? '#ff9f0a' : '#30d158',
+            }} />
+          </div>
+          <div className="text-[12px] text-[#86868b]">
+            {view.totalExpense > budget
+              ? <span className="text-[#ff3b30] font-medium">已超支 {yuan(view.totalExpense - budget)}</span>
+              : <>还可以花 <span className="font-medium text-[#30d158]">{yuan(budget - view.totalExpense)}</span></>}
+            {view.atPresent && view.totalExpense <= budget && (() => {
+              const now = new Date()
+              const daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate()
+              const daily = daysLeft > 0 ? (budget - view.totalExpense) / daysLeft : 0
+              return daysLeft > 0 ? <span> · 日均可花 {yuan(daily)}</span> : null
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* 分类明细 */}
       <div className="card p-5">
         <h3 className="text-[15px] font-semibold mb-3">分类明细</h3>
@@ -160,7 +196,7 @@ export function Dashboard({ expenses, onGotoHealth }: { expenses: Expense[]; onG
         ) : (
           <div className="space-y-2.5">
             {view.cats.map((c) => {
-              const pct = view.total > 0 ? (c.value / view.total) * 100 : 0
+              const pct = view.totalExpense > 0 ? (c.value / view.totalExpense) * 100 : 0
               return (
                 <div key={c.id} className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-[15px] shrink-0" style={{ background: c.meta.color + '1f' }}>{c.meta.emoji}</div>
