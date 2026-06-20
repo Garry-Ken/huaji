@@ -213,7 +213,8 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
 
   // —— 账号 ——
   const sendOtp = useCallback(async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } })
+    const redirectTo = typeof window !== 'undefined' ? window.location.origin : 'https://huaji.pages.dev'
+    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true, emailRedirectTo: redirectTo } })
     return error ? { ok: false, msg: zhAuth(error.message) } : { ok: true, msg: '验证码已发到邮箱，请查收（含垃圾箱）' }
   }, [])
 
