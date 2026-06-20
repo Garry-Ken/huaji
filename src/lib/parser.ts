@@ -432,7 +432,7 @@ function extractLocation(text: string): string | undefined {
 }
 
 const NOISE_RE = /\d+(?:\.\d+)?\s*(?:元|块钱?|¥|￥)?/gi
-const VERB_RE = /(?:吃(?:了|饭|了饭)?|喝(?:了|水|了水)?|买了?|点了?|花了?|来[一个份碗杯]|中午|下午|上午|晚上|今天|昨天|在\S{1,4})/g
+const VERB_RE = /(?:吃(?:了|饭|了饭)?|喝(?:了|水|了水)?|买了?|点了?|花了|来[一个份碗杯]|聚餐|聚会|早茶|宵夜|夜宵|早餐|午餐|晚餐|加餐|下午茶|办酒席|请客|一共|总共|共计|合计|人均|AA|中午|下午|上午|晚上|今天|昨天|在\S{1,4})/g
 const QUANTIFIER_FOOD_RE = /(?:吃了?|喝了?|买了?|点了?|来了?|煮了?|做了?|烤了?|炸了?|蒸了?|炒了?|嚼了?|啃了?|嗑了?)\s*(?:一|两|三|几|点|些)?\s*(?:碗|杯|个|份|根|串|盒|袋|瓶|块|片|盘|包|桶|罐|条|把|颗|粒|口|块儿)\s*([一-鿿]{1,6})/
 
 const QUANTITY_RE = /[一二两三四五六七八九十\d]+\s*[份碗杯个只盒袋瓶块片盘包桶罐条把颗粒串根]/g
@@ -449,7 +449,7 @@ function extractFoodNames(text: string, foodHits: { match: string[]; name: strin
       if (!/[一-鿿]/.test(clean)) continue
       names.push(clean)
     }
-    if (names.length > 0) return dedupe(names).slice(0, 4)
+    if (names.length > 0) return dedupe(names).slice(0, 30)
   }
 
   if (foodHits.length > 0) {
@@ -494,7 +494,7 @@ const INCOME_TITLE_MAP: [RegExp, string][] = [
 
 function buildTitle(args: { text: string; category: CategoryId; items: string[]; merchant?: string }): string {
   const { text, category, items, merchant } = args
-  if (items.length) return items.slice(0, 4).join('、')
+  if (items.length) return items.slice(0, 30).join('、')
   if (merchant) return merchant
   if (category === 'income') {
     for (const [re, label] of INCOME_TITLE_MAP) {
