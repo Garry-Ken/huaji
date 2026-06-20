@@ -17,7 +17,7 @@ const PRO_ROWS = [
   { key: 'history', label: '无限历史记录' },
 ]
 
-const APP_VERSION = '0.3.0'
+const APP_VERSION = '0.3.1'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
