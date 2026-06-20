@@ -39,8 +39,8 @@ function chineseToArabic(text: string): string {
 }
 
 // ---------- 收入/支出检测 ----------
-const INCOME_KW = /工资|薪水|薪资|奖金|年终奖|分红|稿费|退款|报销|利息|理财收益|投资收益|补贴|补助|津贴|佣金|提成|发工资/
-const INCOME_DIR = /给我[转打发]|[转打发]给我|收到.*[钱元块]|到账|进账/
+const INCOME_KW = /工资|薪水|薪资|奖金|年终奖|分红|稿费|退款|报销|利息|理财收益|投资收益|补贴|补助|津贴|佣金|提成|发工资|赚了|赚到|赚钱|挣了|挣到|挣钱|营收|收益|进账|入账|回款|尾款|货款|rental|房租收入|卖了|卖出|中奖|红包/
+const INCOME_DIR = /给我[转打发]|[转打发]给我|收到.*[钱元块]|到账|进账|赚[了到]?\s*\d|挣[了到]?\s*\d/
 
 function detectType(text: string): TransactionType {
   if (INCOME_KW.test(text)) return 'income'
