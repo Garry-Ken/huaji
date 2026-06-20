@@ -73,6 +73,71 @@ export function mergeRecords(local: Expense[], remote: Expense[]): Expense[] {
   return [...map.values()]
 }
 
+export async function syncDeleteToCloud(ids: string[]): Promise<{ ok: boolean; msg: string }> {
+  if (!SUPABASE_READY) return { ok: false, msg: '云端未配置' }
+  const { data: sess } = await supabase.auth.getSession()
+  if (!sess.session) return { ok: false, msg: '请先登录' }
+
+  const { error } = await supabase
+    .from('records')
+    .update({ deleted: true, updated_at: new Date().toISOString() })
+    .eq('user_id', sess.session.user.id)
+    .in('record_id', ids)
+
+  if (error) return { ok: false, msg: error.message }
+  return { ok: true, msg: `已标记 ${ids.length} 条为已删除` }
+}
+
+export async function pullDeletedFromCloud(): Promise<{ ok: boolean; records: Expense[]; msg: string }> {
+  if (!SUPABASE_READY) return { ok: false, records: [], msg: '云端未配置' }
+  const { data: sess } = await supabase.auth.getSession()
+  if (!sess.session) return { ok: false, records: [], msg: '请先登录' }
+
+  const { data, error } = await supabase
+    .from('records')
+    .select('record_id, data, deleted')
+    .eq('user_id', sess.session.user.id)
+    .eq('deleted', true)
+
+  if (error) return { ok: false, records: [], msg: error.message }
+
+  const records = (data ?? []).map(r => ({ type: 'expense' as const, ...r.data }) as Expense)
+  return { ok: true, records, msg: `找到 ${records.length} 条已删除记录` }
+}
+
+export async function restoreFromCloud(ids: string[]): Promise<{ ok: boolean; msg: string }> {
+  if (!SUPABASE_READY) return { ok: false, msg: '云端未配置' }
+  const { data: sess } = await supabase.auth.getSession()
+  if (!sess.session) return { ok: false, msg: '请先登录' }
+
+  const { error } = await supabase
+    .from('records')
+    .update({ deleted: false, updated_at: new Date().toISOString() })
+    .eq('user_id', sess.session.user.id)
+    .in('record_id', ids)
+
+  if (error) return { ok: false, msg: error.message }
+  return { ok: true, msg: `已恢复 ${ids.length} 条记录` }
+}
+
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+let syncStatusCb: ((s: 'idle' | 'syncing' | 'done' | 'error') => void) | null = null
+
+export function onSyncStatus(cb: (s: 'idle' | 'syncing' | 'done' | 'error') => void): void {
+  syncStatusCb = cb
+}
+
+export async function autoSync(records: Expense[]): Promise<void> {
+  if (syncTimer) clearTimeout(syncTimer)
+  syncTimer = setTimeout(async () => {
+    syncTimer = null
+    syncStatusCb?.('syncing')
+    const res = await pushToCloud(records)
+    syncStatusCb?.(res.ok ? 'done' : 'error')
+    if (res.ok) setTimeout(() => syncStatusCb?.('idle'), 2000)
+  }, 3000)
+}
+
 export function getLastSyncDisplay(): string | null {
   const ts = localStorage.getItem(LAST_SYNC_KEY)
   if (!ts) return null

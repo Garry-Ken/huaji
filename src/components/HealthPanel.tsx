@@ -15,7 +15,7 @@ const KINDS: { id: PeriodKind; label: string }[] = [
   { id: 'year', label: '年度' },
 ]
 
-export function HealthPanel({ expenses }: { expenses: Expense[] }) {
+export function HealthPanel({ expenses, onOpenAiChat }: { expenses: Expense[]; onOpenAiChat?: () => void }) {
   const [kind, setKind] = useState<PeriodKind>('month')
   const [anchor, setAnchor] = useState<number>(Date.now())
   const { isPro, openPaywall } = useEntitlement()
@@ -176,6 +176,22 @@ export function HealthPanel({ expenses }: { expenses: Expense[] }) {
               ))}
             </div>
           </div>
+
+          {/* AI 营养师入口 */}
+          {onOpenAiChat && (
+            <button onClick={onOpenAiChat} className="card w-full p-5 text-left hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-white shrink-0" style={{ background: 'linear-gradient(135deg,#af52de,#ff375f)' }}>
+                  <SparkIcon size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-[15px]">AI 营养师</div>
+                  <div className="text-[12px] text-[#86868b] mt-0.5">基于你的饮食数据，给出个性化优化建议</div>
+                </div>
+                <span className="pill !py-0.5 !px-2 text-[10px] font-semibold text-white shrink-0" style={{ background: 'linear-gradient(135deg,#af52de,#ff375f)' }}>Ultra</span>
+              </div>
+            </button>
+          )}
         </>
       )}
     </div>

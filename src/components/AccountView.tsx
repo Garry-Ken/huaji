@@ -1,23 +1,21 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { AssetAccount, Expense } from '../types'
-import { useEntitlement, type Plan } from '../lib/entitlement'
+import { useEntitlement, TIER_INFO, type Plan } from '../lib/entitlement'
 import { categoryMeta } from '../lib/categories'
 import { exportToJSON, importFromJSON, loadBudget, saveBudget, persist, sortByTime } from '../lib/storage'
 import { pushToCloud, pullFromCloud, mergeRecords, getLastSyncDisplay } from '../lib/sync'
-import { CrownIcon, LockIcon, CheckIcon, DownloadIcon, CloudIcon, SparkIcon, ChevronRight, UserIcon, UploadIcon, ShieldIcon, TargetIcon, RefreshIcon, InfoIcon } from './icons'
+import { CrownIcon, LockIcon, CheckIcon, DownloadIcon, CloudIcon, SparkIcon, ChevronRight, UserIcon, UploadIcon, ShieldIcon, TargetIcon, RefreshIcon, InfoIcon, TrashIcon } from './icons'
 import { AssetsCard } from './AssetsCard'
+import { RecoverSheet } from './RecoverSheet'
 
-const PRO_ROWS = [
-  { key: 'period', label: '季度 / 半年 / 年度深度分析' },
-  { key: 'health', label: '饮食健康长周期趋势' },
-  { key: 'ai', label: 'AI 智能增强（Claude）' },
-  { key: 'sync', label: '跨设备云同步' },
-  { key: 'export', label: '数据导出 CSV' },
-  { key: 'history', label: '无限历史记录' },
-]
+const TIER_GRADIENTS: Record<string, string> = {
+  plus: 'linear-gradient(135deg,#0a84ff,#5ac8fa)',
+  pro: 'linear-gradient(135deg,#0a84ff,#30d158)',
+  ultra: 'linear-gradient(135deg,#af52de,#ff375f)',
+}
 
-const APP_VERSION = '0.3.1'
+const APP_VERSION = '0.4.0'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
@@ -44,22 +42,28 @@ function planLabel(p?: string) {
 
 export function AccountView({ expenses, onToast, onClearData, onReload, accounts, onAccountsChange }: { expenses: Expense[]; onToast: (m: string) => void; onClearData: () => void; onReload: (records: Expense[]) => void; accounts?: AssetAccount[]; onAccountsChange?: (a: AssetAccount[]) => void }) {
   const ent = useEntitlement()
-  const { status, isPro, daysLeft, aiEnhance, setAiEnhance, openPaywall, user, isAdmin, signOut, openLogin, proPlan, proExpiresAt } = ent
+  const { status, tier, isPlus, isPro, isUltra, daysLeft, aiEnhance, setAiEnhance, openPaywall, user, isAdmin, signOut, openLogin, proPlan, proExpiresAt } = ent
   const fileRef = useRef<HTMLInputElement>(null)
   const [syncing, setSyncing] = useState(false)
   const [budgetOpen, setBudgetOpen] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
+  const [recoverOpen, setRecoverOpen] = useState(false)
 
+  const tierName = tier === 'ultra' ? 'Ultra' : tier === 'pro' ? 'Pro' : tier === 'plus' ? 'Plus' : null
   const statusMeta =
-    status === 'pro'
-      ? { title: 'Pro 会员', sub: proExpiresAt ? `${planLabel(proPlan)} · 有效期至 ${new Date(proExpiresAt).toLocaleDateString('zh-CN')}` : 'Pro', grad: 'linear-gradient(135deg,#0a84ff,#30d158)' }
+    tier
+      ? { title: `${tierName} 会员`, sub: proExpiresAt ? `${planLabel(proPlan)} · 有效期至 ${new Date(proExpiresAt).toLocaleDateString('zh-CN')}` : tierName!, grad: TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.pro }
       : status === 'trial'
         ? { title: '试用中', sub: `Pro 功能免费体验 · 剩 ${daysLeft} 天`, grad: 'linear-gradient(135deg,#ff9f0a,#ff375f)' }
         : status === 'expired'
           ? { title: '免费版', sub: '试用已结束 · 升级解锁全部功能', grad: 'linear-gradient(135deg,#8e8e93,#636366)' }
           : { title: '免费版', sub: '可免费试用 Pro 7 天', grad: 'linear-gradient(135deg,#8e8e93,#636366)' }
 
-  const gated = (reason: string, action: () => void) => () => (isPro ? action() : openPaywall(reason))
+  const gated = (reason: string, minTier: 'plus' | 'pro' | 'ultra', action: () => void) => () => {
+    const rank = isUltra ? 3 : isPro ? 2 : isPlus ? 1 : 0
+    const need = minTier === 'ultra' ? 3 : minTier === 'pro' ? 2 : 1
+    rank >= need ? action() : openPaywall(reason)
+  }
 
   return (
     <div className="space-y-4">
@@ -74,10 +78,15 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
             <div className="text-[12px] text-[#86868b] mt-0.5">{statusMeta.sub}</div>
           </div>
         </div>
-        {status !== 'pro' && (
+        {!tier && (
           <button onClick={() => openPaywall()} className="btn-primary w-full mt-4">
             <CrownIcon size={18} />
-            {status === 'free' ? '开始 7 天免费试用' : '升级 Pro'}
+            {status === 'free' ? '开始 7 天免费试用' : '升级会员'}
+          </button>
+        )}
+        {tier && tier !== 'ultra' && (
+          <button onClick={() => openPaywall()} className="btn-ghost w-full mt-3 justify-center text-[13px]">
+            升级到 {tier === 'plus' ? 'Pro' : 'Ultra'} →
           </button>
         )}
       </div>
@@ -90,7 +99,7 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
               <span className="text-[#0a84ff]"><UserIcon size={20} /></span>
               <div className="flex-1 min-w-0">
                 <div className="text-[15px] font-medium truncate">{user.email}</div>
-                <div className="text-[12px] text-[#86868b]">已登录 · Pro 权益跨设备同步</div>
+                <div className="text-[12px] text-[#86868b]">已登录{tierName ? ` · ${tierName} 会员` : ''}</div>
               </div>
               <button onClick={() => { signOut(); onToast('已退出登录') }} className="text-[13px] text-[#ff3b30] font-medium shrink-0">退出</button>
             </div>
@@ -101,7 +110,7 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
             <span className="text-[#0a84ff]"><UserIcon size={20} /></span>
             <div className="flex-1 min-w-0">
               <div className="text-[15px] font-medium">登录 / 恢复购买</div>
-              <div className="text-[12px] text-[#86868b]">用邮箱登录，换设备也能恢复 Pro</div>
+              <div className="text-[12px] text-[#86868b]">用邮箱登录，换设备也能恢复会员</div>
             </div>
             <ChevronRight size={18} className="text-[#c7c7cc] shrink-0" />
           </button>
@@ -110,14 +119,32 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
 
       {/* 权益清单 */}
       <div className="card p-5">
-        <h3 className="text-[15px] font-semibold mb-3 flex items-center gap-1.5"><CrownIcon size={16} className="text-[#ff9f0a]" />Pro 权益</h3>
-        <div className="space-y-2.5">
-          {PRO_ROWS.map((r) => (
-            <div key={r.key} className="flex items-center gap-2.5 text-[14px]">
-              {isPro ? <CheckIcon size={17} className="text-[#30d158] shrink-0" /> : <LockIcon size={16} className="text-[#c7c7cc] shrink-0" />}
-              <span className={isPro ? '' : 'text-[#86868b]'}>{r.label}</span>
-            </div>
-          ))}
+        <h3 className="text-[15px] font-semibold mb-3 flex items-center gap-1.5"><CrownIcon size={16} className="text-[#ff9f0a]" />会员权益</h3>
+        <div className="space-y-4">
+          {TIER_INFO.map((info) => {
+            const rank = isUltra ? 3 : isPro ? 2 : isPlus ? 1 : 0
+            const tierRank = info.tier === 'ultra' ? 3 : info.tier === 'pro' ? 2 : 1
+            const unlocked = rank >= tierRank
+            return (
+              <div key={info.tier}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-5 h-5 rounded-md flex items-center justify-center text-white" style={{ background: info.gradient }}>
+                    <CrownIcon size={10} />
+                  </div>
+                  <span className="text-[13px] font-semibold">{info.name}</span>
+                  <span className="text-[11px] text-[#86868b]">{info.tagline}</span>
+                </div>
+                <div className="space-y-1.5 pl-7">
+                  {info.features.filter(f => !f.startsWith('包含')).map((f) => (
+                    <div key={f} className="flex items-center gap-2 text-[13px]">
+                      {unlocked ? <CheckIcon size={15} className="text-[#30d158] shrink-0" /> : <LockIcon size={14} className="text-[#c7c7cc] shrink-0" />}
+                      <span className={unlocked ? '' : 'text-[#86868b]'}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -142,7 +169,7 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
           <span className="text-[#0a84ff]"><SparkIcon size={20} /></span>
           <div className="flex-1 min-w-0">
             <div className="text-[15px] font-medium flex items-center gap-1.5">AI 智能增强 {!isPro && <LockIcon size={13} className="text-[#c7c7cc]" />}</div>
-            <div className="text-[12px] text-[#86868b]">用 Claude 复核解析与健康建议</div>
+            <div className="text-[12px] text-[#86868b]">用 AI 复核解析与健康建议</div>
           </div>
           <Toggle on={isPro && aiEnhance} disabled={!isPro} onClick={() => (isPro ? setAiEnhance(!aiEnhance) : openPaywall('AI 智能增强是 Pro 功能'))} />
         </div>
@@ -150,14 +177,14 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
 
       {/* 数据管理 */}
       <div className="card overflow-hidden divide-y divide-[#00000008] dark:divide-[#ffffff0d]">
-        <Row icon={<CloudIcon size={20} />} title="云端同步" sub={syncing ? '同步中…' : (getLastSyncDisplay() ? `上次同步 ${getLastSyncDisplay()}` : '登录后可同步到云端')} locked={!isPro} onClick={gated('云同步是 Pro 功能', async () => {
+        <Row icon={<CloudIcon size={20} />} title="云端同步" sub={syncing ? '同步中…' : (getLastSyncDisplay() ? `上次同步 ${getLastSyncDisplay()}` : '登录后可同步到云端')} locked={!isPlus} onClick={gated('云同步是 Plus 会员功能', 'plus', async () => {
           if (!user) { onToast('请先登录'); return }
           setSyncing(true)
           const pushRes = await pushToCloud(expenses)
           setSyncing(false)
           onToast(pushRes.ok ? pushRes.msg : pushRes.msg)
         })} />
-        <Row icon={<RefreshIcon size={20} />} title="从云端恢复" sub="拉取云端数据合并到本地" locked={!isPro} onClick={gated('云同步是 Pro 功能', async () => {
+        <Row icon={<RefreshIcon size={20} />} title="从云端恢复" sub="拉取云端数据合并到本地" locked={!isPlus} onClick={gated('云端恢复是 Plus 会员功能', 'plus', async () => {
           if (!user) { onToast('请先登录'); return }
           setSyncing(true)
           const pullRes = await pullFromCloud()
@@ -168,7 +195,11 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
           persist(merged)
           onToast(`已合并，共 ${merged.length} 条记录`)
         })} />
-        <Row icon={<DownloadIcon size={20} />} title="导出 CSV" sub={`当前 ${expenses.length} 条记录`} locked={!isPro} onClick={gated('数据导出是 Pro 功能', () => { downloadCSV(expenses); onToast('已导出 CSV') })} />
+        <Row icon={<TrashIcon size={20} />} title="恢复已删除记录" sub="从云端找回误删的记录" locked={!isPlus} onClick={gated('恢复已删除记录是 Plus 会员功能', 'plus', () => {
+          if (!user) { onToast('请先登录'); return }
+          setRecoverOpen(true)
+        })} />
+        <Row icon={<DownloadIcon size={20} />} title="导出 CSV" sub={`当前 ${expenses.length} 条记录`} locked={!isPro} onClick={gated('CSV 导出是 Pro 会员功能', 'pro', () => { downloadCSV(expenses); onToast('已导出 CSV') })} />
       </div>
 
       {/* 备份（免费功能） */}
@@ -214,6 +245,11 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
 
       {budgetOpen && <BudgetSheet onClose={() => setBudgetOpen(false)} onToast={onToast} />}
       {pwOpen && <PasswordChangeSheet onClose={() => setPwOpen(false)} onToast={onToast} />}
+      {recoverOpen && <RecoverSheet onClose={() => setRecoverOpen(false)} onRecover={(restored) => {
+        const merged = sortByTime(mergeRecords(expenses, restored))
+        onReload(merged)
+        persist(merged)
+      }} onToast={onToast} />}
     </div>
   )
 }

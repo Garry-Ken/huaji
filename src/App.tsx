@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { AssetAccount, Expense, InputSource, Ledger } from './types'
 import { parseMultiExpense } from './lib/parser'
-import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid, hasSampleFlag, setSampleFlag, clearSampleFlag, loadBudget, DEFAULT_LEDGER, loadLedgers, persistLedgers, loadAccounts, persistAccounts } from './lib/storage'
+import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid, hasSampleFlag, setSampleFlag, clearSampleFlag, loadBudget, DEFAULT_LEDGER, loadLedgers, persistLedgers, loadAccounts, persistAccounts, softDelete } from './lib/storage'
+import { autoSync, syncDeleteToCloud, onSyncStatus } from './lib/sync'
+import { SyncIndicator, type SyncStatus } from './components/SyncIndicator'
 import { generateSample } from './lib/sampleData'
 import { RecordsView } from './components/RecordsView'
 import { Dashboard } from './components/Dashboard'
@@ -10,6 +12,7 @@ import { HealthPanel } from './components/HealthPanel'
 import { AccountView } from './components/AccountView'
 import { EditSheet } from './components/EditSheet'
 import { Paywall } from './components/Paywall'
+import { AiChatSheet } from './components/AiChatSheet'
 import { LoginSheet } from './components/LoginSheet'
 import { PasswordResetSheet } from './components/PasswordResetSheet'
 import { LedgerSwitcher } from './components/LedgerSwitcher'
@@ -36,7 +39,9 @@ export default function App() {
   const [ledgers, setLedgers] = useState<Ledger[]>([])
   const [activeLedgerId, setActiveLedgerId] = useState('default')
   const [accounts, setAccounts] = useState<AssetAccount[]>([])
-  const { status, daysLeft, openPaywall } = useEntitlement()
+  const [aiChatOpen, setAiChatOpen] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
+  const { status, tier, isPlus, daysLeft, openPaywall, user } = useEntitlement()
 
   // 初始化：主题 + 数据（首次注入示例）
   useEffect(() => {
@@ -53,12 +58,17 @@ export default function App() {
     setExpenses(sortByTime(data))
     setLedgers(loadLedgers())
     setAccounts(loadAccounts())
+    onSyncStatus(setSyncStatus)
   }, [])
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
     localStorage.setItem('huaji.theme', dark ? 'dark' : 'light')
   }, [dark])
+
+  useEffect(() => {
+    if (user && isPlus && expenses.length > 0) autoSync(expenses)
+  }, [expenses, user, isPlus])
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -126,10 +136,19 @@ export default function App() {
   }
 
   const remove = (id: string) => {
-    update(expenses.filter((x) => x.id !== id))
+    const { remaining } = softDelete(new Set([id]), expenses)
+    update(remaining)
     setEditing(null)
     setEditingNew(false)
     showToast('已删除')
+    if (user && isPlus) syncDeleteToCloud([id])
+  }
+
+  const batchRemove = (ids: string[]) => {
+    const { remaining } = softDelete(new Set(ids), expenses)
+    update(remaining)
+    showToast(`已删除 ${ids.length} 条记录`)
+    if (user && isPlus) syncDeleteToCloud(ids)
   }
 
   const openNew = () => {
@@ -189,10 +208,19 @@ export default function App() {
           </div>
 
           <div className="flex-1" />
+          <SyncIndicator status={syncStatus} />
           {/* 订阅状态药丸 */}
-          {status === 'pro' ? (
+          {tier === 'ultra' ? (
+            <button onClick={() => setTab('account')} className="pill text-white font-semibold !px-2.5" style={{ background: 'linear-gradient(135deg,#af52de,#ff375f)' }} title="Ultra 会员">
+              <CrownIcon size={13} />Ultra
+            </button>
+          ) : tier === 'pro' || status === 'pro' ? (
             <button onClick={() => setTab('account')} className="pill text-white font-semibold !px-2.5" style={{ background: 'linear-gradient(135deg,#0a84ff,#30d158)' }} title="Pro 会员">
               <CrownIcon size={13} />Pro
+            </button>
+          ) : tier === 'plus' || status === 'plus' ? (
+            <button onClick={() => setTab('account')} className="pill text-white font-semibold !px-2.5" style={{ background: 'linear-gradient(135deg,#0a84ff,#5ac8fa)' }} title="Plus 会员">
+              <CrownIcon size={13} />Plus
             </button>
           ) : status === 'trial' ? (
             <button onClick={() => setTab('account')} className="pill font-medium bg-[#ff9f0a]/15 text-[#ff9f0a]" title="试用中">
@@ -212,9 +240,9 @@ export default function App() {
 
       {/* 内容 */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-5 pb-28 sm:pb-10">
-        {tab === 'records' && <RecordsView expenses={filteredExpenses} onAdd={addFromText} onEdit={(e) => { setEditing(e); setEditingNew(false) }} onLoadSample={loadSample} sampleMode={sampleMode} onClearAll={clearAllData} />}
+        {tab === 'records' && <RecordsView expenses={filteredExpenses} onAdd={addFromText} onEdit={(e) => { setEditing(e); setEditingNew(false) }} onBatchDelete={batchRemove} onLoadSample={loadSample} sampleMode={sampleMode} onClearAll={clearAllData} />}
         {tab === 'stats' && <Dashboard expenses={filteredExpenses} onGotoHealth={() => setTab('health')} budget={budget} onSettleDebt={(person, amount) => { const type = amount > 0 ? 'income' as const : 'expense' as const; const e: Expense = { id: uid(), type, amount: Math.abs(amount), category: 'social', title: `${person} 清账`, items: [], occurredAt: Date.now(), createdAt: Date.now(), source: 'manual', rawText: `${person}清账${Math.abs(amount)}`, counterparty: person, isDebt: true, ...(activeLedgerId !== 'default' ? { ledgerId: activeLedgerId } : {}) }; update([e, ...expenses]); showToast(`已清账 · ${person}`) }} />}
-        {tab === 'health' && <HealthPanel expenses={filteredExpenses} />}
+        {tab === 'health' && <HealthPanel expenses={filteredExpenses} onOpenAiChat={() => setAiChatOpen(true)} />}
         {tab === 'account' && <AccountView expenses={expenses} onToast={showToast} onClearData={clearAllData} onReload={(records) => { setExpenses(records); persist(records) }} accounts={accounts} onAccountsChange={updateAccounts} />}
       </main>
 
@@ -242,6 +270,9 @@ export default function App() {
           onDelete={editingNew ? undefined : remove}
         />
       )}
+
+      {/* AI 对话 */}
+      {aiChatOpen && <AiChatSheet expenses={expenses} onClose={() => setAiChatOpen(false)} />}
 
       {/* 付费墙 + 登录 */}
       <Paywall onResult={showToast} />

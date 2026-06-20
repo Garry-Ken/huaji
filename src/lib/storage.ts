@@ -161,3 +161,35 @@ export function loadAccounts(): AssetAccount[] {
 export function persistAccounts(list: AssetAccount[]): void {
   try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify(list)) } catch { /* ignore */ }
 }
+
+// ---------- 软删除（回收站） ----------
+const DELETED_KEY = 'huaji.deleted.v1'
+const DELETED_TTL = 30 * 86400000 // 30 天自动清理
+
+export function loadDeleted(): Expense[] {
+  try {
+    const raw = localStorage.getItem(DELETED_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    if (!Array.isArray(arr)) return []
+    const cutoff = Date.now() - DELETED_TTL
+    return arr.filter((e: Record<string, unknown>) => (e.deletedAt as number) > cutoff) as Expense[]
+  } catch { return [] }
+}
+
+export function persistDeleted(list: Expense[]): void {
+  try { localStorage.setItem(DELETED_KEY, JSON.stringify(list)) } catch { /* ignore */ }
+}
+
+export function softDelete(ids: Set<string>, allExpenses: Expense[]): { remaining: Expense[]; deleted: Expense[] } {
+  const now = Date.now()
+  const deleted: Expense[] = []
+  const remaining: Expense[] = []
+  for (const e of allExpenses) {
+    if (ids.has(e.id)) deleted.push({ ...e, deletedAt: now } as Expense & { deletedAt: number })
+    else remaining.push(e)
+  }
+  const prev = loadDeleted()
+  persistDeleted([...deleted, ...prev])
+  return { remaining, deleted }
+}

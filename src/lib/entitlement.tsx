@@ -19,9 +19,10 @@ const DAY = 86400000
 const TRIAL_DAYS = 7
 const STORE_KEY = 'huaji.entitlement.v1' // 仅存本地偏好 + 试用开始时间
 
+export type Tier = 'plus' | 'pro' | 'ultra'
 export type Plan = 'monthly' | 'quarterly' | 'annual'
 export type Region = 'cn' | 'intl'
-export type Status = 'free' | 'trial' | 'pro' | 'expired'
+export type Status = 'free' | 'trial' | 'plus' | 'pro' | 'ultra' | 'expired'
 
 interface LocalPrefs {
   region: Region
@@ -29,7 +30,7 @@ interface LocalPrefs {
   aiEnhance: boolean
 }
 
-// —— 定价（月度基准 · 季度 8 折 · 年度 7 折）——
+// —— 定价（三级会员 · 季度 8 折 · 年度 7 折）——
 export interface PlanInfo {
   id: Plan
   label: string
@@ -40,13 +41,50 @@ export interface PlanInfo {
   badge?: string
 }
 
+export interface TierInfo {
+  tier: Tier
+  name: string
+  tagline: string
+  features: string[]
+  highlight?: boolean
+  gradient: string
+}
+
 const RAW = {
-  cn: { sym: '¥', monthly: 20, quarterly: 48, annual: 168 },
-  intl: { sym: '$', monthly: 19.99, quarterly: 47.98, annual: 167.9 },
+  cn: {
+    sym: '¥',
+    plus:  { monthly: 9.9,  quarterly: 23.7,  annual: 79 },
+    pro:   { monthly: 19.9, quarterly: 47.8,  annual: 159 },
+    ultra: { monthly: 49.9, quarterly: 119.8, annual: 399 },
+  },
+  intl: {
+    sym: '$',
+    plus:  { monthly: 4.99,  quarterly: 11.99,  annual: 39.99 },
+    pro:   { monthly: 9.99,  quarterly: 23.99,  annual: 79.99 },
+    ultra: { monthly: 19.99, quarterly: 47.99,  annual: 159.99 },
+  },
 } as const
 
-export function pricing(region: Region): { sym: string; plans: PlanInfo[] } {
-  const r = RAW[region]
+export const TIER_INFO: TierInfo[] = [
+  {
+    tier: 'plus', name: 'Plus', tagline: '云端守护',
+    gradient: 'linear-gradient(135deg,#0a84ff,#5ac8fa)',
+    features: ['多账本管理', '云端自动同步', '云端恢复删除记录 (5次/月)', '数据导入导出 (5次/月)'],
+  },
+  {
+    tier: 'pro', name: 'Pro', tagline: '智能分析', highlight: true,
+    gradient: 'linear-gradient(135deg,#0a84ff,#30d158)',
+    features: ['包含 Plus 全部功能', 'AI 智能增强解析', '季度/半年/年度深度分析', 'CSV 导出', '数据导入导出 (10次/月)'],
+  },
+  {
+    tier: 'ultra', name: 'Ultra', tagline: 'AI 营养师',
+    gradient: 'linear-gradient(135deg,#af52de,#ff375f)',
+    features: ['包含 Pro 全部功能', 'AI 饮食对话 (1亿 token/月)', '无限导入导出', '优先客服支持'],
+  },
+]
+
+export function pricing(region: Region, tier: Tier = 'pro'): { sym: string; plans: PlanInfo[] } {
+  const r = RAW[region][tier]
   const round = (n: number) => Math.round(n * 100) / 100
   const monthlyTotalForTerm = (months: number) => r.monthly * months
   const mk = (id: Plan, total: number, months: number, badge?: string): PlanInfo => {
@@ -62,10 +100,13 @@ export function pricing(region: Region): { sym: string; plans: PlanInfo[] } {
     }
   }
   return {
-    sym: r.sym,
+    sym: RAW[region].sym,
     plans: [mk('monthly', r.monthly, 1), mk('quarterly', r.quarterly, 3), mk('annual', r.annual, 12, '最划算')],
   }
 }
+
+// 旧版兼容：无参调用返回 Pro 定价
+export function pricingLegacy(region: Region) { return pricing(region, 'pro') }
 
 export function formatPrice(region: Region, n: number): string {
   const sym = RAW[region].sym
@@ -114,6 +155,7 @@ function zhRpc(m: string): string {
 
 interface ServerEnt {
   plan?: Plan
+  tier?: Tier
   expiresAt?: number
 }
 
@@ -129,7 +171,10 @@ interface Ctx {
   setAiEnhance: (v: boolean) => void
   // 状态
   status: Status
+  tier?: Tier
+  isPlus: boolean
   isPro: boolean
+  isUltra: boolean
   daysLeft: number
   proPlan?: Plan
   proExpiresAt?: number
@@ -193,9 +238,9 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
     setUser({ id: u.id, email: u.email ?? '' })
     try {
       const [entRes, admRes] = await Promise.all([supabase.rpc('my_entitlement'), supabase.rpc('is_admin')])
-      const rows = entRes.data as Array<{ plan: string | null; status: string; expires_at: string | null }> | null
+      const rows = entRes.data as Array<{ plan: string | null; status: string; expires_at: string | null; tier?: string | null }> | null
       const row = Array.isArray(rows) ? rows[0] : null
-      setServerEnt(row ? { plan: (row.plan ?? undefined) as Plan | undefined, expiresAt: row.expires_at ? new Date(row.expires_at).getTime() : undefined } : null)
+      setServerEnt(row ? { plan: (row.plan ?? undefined) as Plan | undefined, tier: (row.tier ?? 'pro') as Tier, expiresAt: row.expires_at ? new Date(row.expires_at).getTime() : undefined } : null)
       setIsAdmin(admRes.data === true)
     } catch {
       /* 离线：保留上次已知状态 */
@@ -314,19 +359,26 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
     const now = Date.now()
     const trialEnds = local.trialStartedAt ? local.trialStartedAt + TRIAL_DAYS * DAY : 0
     const trialActive = trialEnds > now
-    const serverPro = !!(serverEnt && serverEnt.expiresAt && serverEnt.expiresAt > now) || isAdmin
-    const status: Status = serverPro ? 'pro' : trialActive ? 'trial' : local.trialStartedAt ? 'expired' : 'free'
+    const serverActive = !!(serverEnt && serverEnt.expiresAt && serverEnt.expiresAt > now) || isAdmin
+    const activeTier: Tier | undefined = serverActive ? (serverEnt?.tier ?? 'pro') : undefined
+    const status: Status = serverActive ? (activeTier ?? 'pro') : trialActive ? 'trial' : local.trialStartedAt ? 'expired' : 'free'
     const daysLeft = local.trialStartedAt ? Math.max(0, Math.ceil((trialEnds - now) / DAY)) : 0
+    const tierRank = (t?: Tier) => t === 'ultra' ? 3 : t === 'pro' ? 2 : t === 'plus' ? 1 : 0
+    const effectiveTier = serverActive ? activeTier : trialActive ? 'pro' as Tier : undefined
+    const rank = tierRank(effectiveTier)
     return {
       region: local.region,
       aiEnhance: local.aiEnhance,
       setRegion: (r) => setLocal((p) => ({ ...p, region: r })),
       setAiEnhance: (v) => setLocal((p) => ({ ...p, aiEnhance: v })),
       status,
-      isPro: serverPro || trialActive,
+      tier: effectiveTier,
+      isPlus: rank >= 1,
+      isPro: rank >= 2,
+      isUltra: rank >= 3,
       daysLeft,
       proPlan: serverEnt?.plan,
-      proExpiresAt: serverPro ? serverEnt?.expiresAt : undefined,
+      proExpiresAt: serverActive ? serverEnt?.expiresAt : undefined,
       user,
       isAdmin,
       authReady,

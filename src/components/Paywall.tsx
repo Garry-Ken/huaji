@@ -1,32 +1,25 @@
 import { useState } from 'react'
-import { useEntitlement, pricing, formatPrice, type Plan } from '../lib/entitlement'
+import { useEntitlement, pricing, formatPrice, TIER_INFO, type Plan, type Tier } from '../lib/entitlement'
 import { PAY } from '../lib/payConfig'
 import { XIcon, CheckIcon, CrownIcon, SparkIcon, ChevronLeft } from './icons'
 
-const PRO_FEATURES = [
-  '季度 / 半年 / 年度 深度可视化分析',
-  '饮食健康长周期趋势与优化建议',
-  'AI 智能增强解析（Claude）',
-  '跨设备云同步',
-  '数据导出 CSV',
-  '无限历史记录',
-]
-
 export function Paywall({ onResult }: { onResult?: (msg: string) => void }) {
   const { paywallOpen, paywallReason, region, setRegion, status, startTrial, redeem, restore, closePaywall } = useEntitlement()
-  const [selected, setSelected] = useState<Plan>('annual')
-  const [step, setStep] = useState<'plans' | 'pay'>('plans')
+  const [selectedTier, setSelectedTier] = useState<Tier>('pro')
+  const [selectedPlan, setSelectedPlan] = useState<Plan>('annual')
+  const [step, setStep] = useState<'tiers' | 'plans' | 'pay'>('tiers')
   const [code, setCode] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   if (!paywallOpen) return null
 
-  const { sym, plans } = pricing(region)
+  const { sym, plans } = pricing(region, selectedTier)
   const neverTrialed = status === 'free'
-  const sel = plans.find((p) => p.id === selected)!
+  const sel = plans.find((p) => p.id === selectedPlan)!
   const amount = formatPrice(region, sel.total)
+  const tierInfo = TIER_INFO.find(t => t.tier === selectedTier)!
 
-  const close = () => { setStep('plans'); setMsg(null); setCode(''); closePaywall() }
+  const close = () => { setStep('tiers'); setMsg(null); setCode(''); closePaywall() }
 
   const doRedeem = async () => {
     if (!code.trim() || busy) return
@@ -34,24 +27,30 @@ export function Paywall({ onResult }: { onResult?: (msg: string) => void }) {
     setMsg(null)
     const r = await redeem(code)
     setBusy(false)
-    if (r.ok) { onResult?.(r.msg); setCode('') } // 成功后 context 会关闭付费墙
+    if (r.ok) { onResult?.(r.msg); setCode('') }
     else setMsg(r.msg)
+  }
+
+  const chooseTier = (tier: Tier) => {
+    setSelectedTier(tier)
+    setSelectedPlan('annual')
+    setStep('plans')
   }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
-      <div className="relative w-full sm:max-w-md card !rounded-t-3xl sm:!rounded-3xl rounded-b-none p-6 animate-pop safe-bottom max-h-[94vh] overflow-y-auto">
-        <button onClick={close} className="absolute right-4 top-4 btn-ghost !p-2 !rounded-full"><XIcon size={18} /></button>
+      <div className="relative w-full sm:max-w-lg card !rounded-t-3xl sm:!rounded-3xl rounded-b-none p-6 animate-pop safe-bottom max-h-[94vh] overflow-y-auto">
+        <button onClick={close} className="absolute right-4 top-4 btn-ghost !p-2 !rounded-full z-10"><XIcon size={18} /></button>
 
-        {step === 'plans' ? (
+        {step === 'tiers' ? (
           <>
             <div className="flex flex-col items-center text-center mb-5">
               <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white mb-3" style={{ background: 'linear-gradient(135deg,#0a84ff,#30d158)' }}>
                 <CrownIcon size={28} />
               </div>
-              <h2 className="text-[22px] font-bold tracking-tight">花迹 Pro</h2>
-              <p className="text-[13px] text-[#86868b] mt-1">{paywallReason ?? '解锁深度分析、AI 增强与云同步'}</p>
+              <h2 className="text-[22px] font-bold tracking-tight">选择你的计划</h2>
+              <p className="text-[13px] text-[#86868b] mt-1">{paywallReason ?? '解锁更多功能，提升记账体验'}</p>
             </div>
 
             <div className="flex justify-center mb-4">
@@ -61,11 +60,65 @@ export function Paywall({ onResult }: { onResult?: (msg: string) => void }) {
               </div>
             </div>
 
+            <div className="space-y-3 mb-5">
+              {TIER_INFO.map((info) => {
+                const p = pricing(region, info.tier)
+                const annual = p.plans.find(x => x.id === 'annual')!
+                return (
+                  <button key={info.tier} onClick={() => chooseTier(info.tier)}
+                    className={`w-full rounded-2xl p-4 text-left transition-all border-2 ${info.highlight ? 'border-[#0a84ff] bg-[#0a84ff]/[0.04]' : 'border-[#00000010] dark:border-[#ffffff14]'}`}
+                  >
+                    <div className="flex items-center gap-3 mb-2.5">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0" style={{ background: info.gradient }}>
+                        <CrownIcon size={18} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-[16px]">{info.name}</span>
+                          <span className="text-[12px] text-[#86868b]">{info.tagline}</span>
+                          {info.highlight && <span className="pill !py-0.5 !px-2 text-[10px] font-semibold text-white" style={{ background: 'linear-gradient(135deg,#ff9f0a,#ff375f)' }}>推荐</span>}
+                        </div>
+                        <div className="text-[13px] text-[#86868b] mt-0.5">{formatPrice(region, annual.perMonth)}/月起</div>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 pl-12">
+                      {info.features.map((f) => (
+                        <div key={f} className="flex items-center gap-2 text-[12px]">
+                          <CheckIcon size={13} className="text-[#30d158] shrink-0" />
+                          <span>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            {neverTrialed && (
+              <button onClick={() => { startTrial(); close() }} className="btn-primary w-full !py-3 text-[16px] mb-2.5">
+                <SparkIcon size={18} />开始 7 天免费试用 Pro
+              </button>
+            )}
+            <button onClick={() => setStep('plans')} className="btn-ghost w-full justify-center text-[13px]">
+              已购买 / 用兑换码开通 →
+            </button>
+            {neverTrialed && <p className="text-[11px] text-[#86868b] text-center mt-2">{sym}0 试用 · 可随时取消</p>}
+          </>
+        ) : step === 'plans' ? (
+          <>
+            <div className="flex items-center gap-2 mb-4">
+              <button onClick={() => setStep('tiers')} className="btn-ghost !p-2 !rounded-full"><ChevronLeft size={18} /></button>
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: tierInfo.gradient }}>
+                <CrownIcon size={14} />
+              </div>
+              <h2 className="text-[17px] font-semibold">花迹 {tierInfo.name}</h2>
+            </div>
+
             <div className="space-y-2.5 mb-5">
               {plans.map((p) => {
-                const active = p.id === selected
+                const active = p.id === selectedPlan
                 return (
-                  <button key={p.id} onClick={() => setSelected(p.id)} className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border-2 transition-all text-left ${active ? 'border-[#0a84ff] bg-[#0a84ff]/[0.06]' : 'border-[#00000010] dark:border-[#ffffff14]'}`}>
+                  <button key={p.id} onClick={() => setSelectedPlan(p.id)} className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border-2 transition-all text-left ${active ? 'border-[#0a84ff] bg-[#0a84ff]/[0.06]' : 'border-[#00000010] dark:border-[#ffffff14]'}`}>
                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${active ? 'border-[#0a84ff] bg-[#0a84ff]' : 'border-[#c7c7cc]'}`}>
                       {active && <CheckIcon size={13} className="text-white" />}
                     </div>
@@ -87,27 +140,21 @@ export function Paywall({ onResult }: { onResult?: (msg: string) => void }) {
             </div>
 
             <div className="rounded-2xl bg-[#f5f5f7] dark:bg-[#2c2c2e]/60 p-3.5 mb-5 space-y-2">
-              {PRO_FEATURES.map((f) => (
+              {tierInfo.features.map((f) => (
                 <div key={f} className="flex items-center gap-2.5 text-[13px]"><CheckIcon size={15} className="text-[#30d158] shrink-0" /><span>{f}</span></div>
               ))}
             </div>
 
-            {neverTrialed && (
-              <button onClick={() => { startTrial(); close() }} className="btn-primary w-full !py-3 text-[16px] mb-2.5">
-                <SparkIcon size={18} />开始 7 天免费试用
-              </button>
-            )}
-            <button onClick={() => setStep('pay')} className={neverTrialed ? 'btn-ghost w-full justify-center' : 'btn-primary w-full !py-3 text-[16px]'}>
-              {neverTrialed ? '已购买 / 用兑换码开通 →' : <>去支付 · {amount}</>}
+            <button onClick={() => setStep('pay')} className="btn-primary w-full !py-3 text-[16px]">
+              去支付 · {amount}
             </button>
-            <p className="text-[11px] text-[#86868b] text-center mt-2.5">{neverTrialed ? `免费试用 ${sym}0 · 可随时取消` : '可随时取消，到期前不再续费'}</p>
+            <p className="text-[11px] text-[#86868b] text-center mt-2.5">可随时取消，到期前不再续费</p>
           </>
         ) : (
-          /* —— 支付步骤 —— */
           <>
             <div className="flex items-center gap-2 mb-4">
               <button onClick={() => setStep('plans')} className="btn-ghost !p-2 !rounded-full"><ChevronLeft size={18} /></button>
-              <h2 className="text-[17px] font-semibold">支付 · {sel.label} {amount}</h2>
+              <h2 className="text-[17px] font-semibold">支付 · {tierInfo.name} {sel.label} {amount}</h2>
             </div>
 
             {region === 'cn' ? (
@@ -129,7 +176,6 @@ export function Paywall({ onResult }: { onResult?: (msg: string) => void }) {
 
             <ContactMethods />
 
-            {/* 兑换码 */}
             <label className="block text-[13px] font-medium mb-1.5">输入兑换码开通</label>
             <div className="flex gap-2">
               <input
