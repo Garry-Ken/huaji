@@ -39,10 +39,12 @@ function chineseToArabic(text: string): string {
 }
 
 // ---------- 收入/支出检测 ----------
-const INCOME_KW = /工资|薪水|薪资|奖金|年终奖|分红|稿费|退款|报销|利息|理财收益|投资收益|补贴|补助|津贴|佣金|提成|发工资|赚了|赚到|赚钱|挣了|挣到|挣钱|营收|收益|进账|入账|回款|尾款|货款|rental|房租收入|卖了|卖出|中奖|红包/
-const INCOME_DIR = /给我[转打发]|[转打发]给我|收到.*[钱元块]|到账|进账|赚[了到]?\s*\d|挣[了到]?\s*\d/
+const INCOME_KW = /工资|薪水|薪资|奖金|年终奖|分红|稿费|退款|报销|利息|理财收益|投资收益|补贴|补助|津贴|佣金|提成|发工资|赚了|赚到|赚钱|挣了|挣到|挣钱|营收|收益|进账|入账|回款|尾款|货款|房租收入|卖了|卖出|中奖|红包|转账收入|收租|租金收入|外快|兼职|接单|私活|带货|打赏|收钱|收款|收到款/
+const INCOME_DIR = /给我[转打发]|[转打发]给我|收到.*[钱元块款红包]|到账|进账|赚[了到]?\s*\d|挣[了到]?\s*\d|卖[了出]\s*\d|入账\s*\d|收了\s*\d/
+const EXPENSE_KW = /买了|花了|消费|支出|缴费|交了|付了|充值|还款|还了|开销|房租(?!收入)|水电|物业|学费|药费|医疗费|手术费|挂号/
 
 function detectType(text: string): TransactionType {
+  if (EXPENSE_KW.test(text)) return 'expense'
   if (INCOME_KW.test(text)) return 'income'
   if (INCOME_DIR.test(text)) return 'income'
   return 'expense'
