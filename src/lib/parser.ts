@@ -272,7 +272,7 @@ export function parseExpense(rawText: string, now = new Date()): ParseResult {
 
   const category: CategoryId = txType === 'income' ? 'income' : isDebt ? 'social' : classify(lower, foodHits.length > 0)
 
-  const items = dedupe(foodHits.map((f) => f.name))
+  const items = extractFoodNames(text, foodHits)
   const title = buildTitle({ text: lower, category, items, merchant })
 
   const meal: MealType | undefined = category === 'food' ? mealFromTime ?? mealByHour(time) : undefined
@@ -406,6 +406,32 @@ function extractLocation(text: string): string | undefined {
   if (m && m[1]) return m[1]
   const place = PLACE_WORDS.find((p) => text.includes(p))
   return place
+}
+
+const NOISE_RE = /\d+(?:\.\d+)?\s*(?:元|块钱?|¥|￥|份|碗|杯|个|斤|两|克|g|kg)?/gi
+const VERB_RE = /(?:吃了?|喝了?|买了?|点了?|花了?|来[一个份碗杯]|一[份碗杯个]|中午|下午|上午|晚上|今天|昨天|在\S{1,4})/g
+
+function extractFoodNames(text: string, foodHits: { match: string[]; name: string }[]): string[] {
+  const lower = text.toLowerCase()
+  const segments = text.split(/[，,、；;]+/).map(s => s.trim()).filter(Boolean)
+  if (segments.length > 1) {
+    const names: string[] = []
+    for (const seg of segments) {
+      const clean = seg.replace(NOISE_RE, '').replace(VERB_RE, '').trim()
+      if (clean.length < 2 || clean.length > 12) continue
+      if (/^\d+$/.test(clean)) continue
+      names.push(clean)
+    }
+    if (names.length > 0) return dedupe(names).slice(0, 4)
+  }
+  if (foodHits.length === 0) return []
+  const matched: string[] = []
+  for (const f of foodHits) {
+    for (const k of f.match) {
+      if (lower.includes(k.toLowerCase()) && k.length >= 2) { matched.push(k); break }
+    }
+  }
+  return dedupe(matched)
 }
 
 function buildTitle(args: { text: string; category: CategoryId; items: string[]; merchant?: string }): string {

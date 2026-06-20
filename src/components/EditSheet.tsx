@@ -93,11 +93,11 @@ export function EditSheet({
         </div>
 
         {/* 标题 */}
-        <label className="block text-[12px] text-[#86868b] mb-1">备注 / 名称</label>
+        <label className="block text-[12px] text-[#86868b] mb-1">消费主体</label>
         <input
           value={title} onChange={(e) => setTitle(e.target.value)}
           className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3 py-2.5 text-[15px] outline-none mb-4"
-          placeholder="如 麻辣烫"
+          placeholder="如 红烧肉、青菜"
         />
 
         {/* 分类（收入时隐藏，固定 income） */}
@@ -141,12 +141,12 @@ export function EditSheet({
           </div>
         </div>
 
-        {/* 备注 */}
-        <label className="block text-[12px] text-[#86868b] mb-1">补充说明</label>
+        {/* 原始记录 + 补充说明 */}
+        <label className="block text-[12px] text-[#86868b] mb-1">原始记录 / 补充说明</label>
         <textarea
           value={note} onChange={(e) => setNote(e.target.value)} rows={2}
           className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3 py-2.5 text-[14px] outline-none resize-none mb-5"
-          placeholder="可补充饮食细节，会用于健康分析"
+          placeholder="自动保存原话，也可补充饮食细节"
         />
 
         <div className="flex items-center gap-3">

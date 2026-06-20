@@ -117,6 +117,7 @@ export function makeExpense(parse: ParseResult, rawText: string, source: InputSo
     createdAt: now,
     source,
     rawText,
+    note: rawText,
     meal: parse.meal,
     health: parse.health,
     ...(ledgerId && ledgerId !== 'default' ? { ledgerId } : {}),
