@@ -30,6 +30,16 @@ create table if not exists public.admins (
   user_id uuid primary key references auth.users(id) on delete cascade
 );
 
+-- 1.1) 会员档位（plus/pro/ultra）。向后兼容：历史数据默认 pro
+alter table public.entitlements add column if not exists tier text not null default 'pro';
+alter table public.redeem_codes add column if not exists tier text not null default 'pro';
+do $$ begin
+  alter table public.entitlements add constraint entitlements_tier_chk check (tier in ('plus','pro','ultra'));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.redeem_codes add constraint redeem_codes_tier_chk check (tier in ('plus','pro','ultra'));
+exception when duplicate_object then null; end $$;
+
 -- 行级安全
 alter table public.entitlements enable row level security;
 alter table public.redeem_codes enable row level security;
@@ -47,57 +57,68 @@ create or replace function public.plan_months(p_plan text) returns int
   select case p_plan when 'monthly' then 1 when 'quarterly' then 3 when 'annual' then 12 else 0 end
 $$;
 
+-- 档位是否合法
+create or replace function public.tier_valid(p_tier text) returns boolean
+  language sql immutable as $$ select p_tier in ('plus','pro','ultra') $$;
+
 -- 当前登录用户是否店主
 create or replace function public.is_admin() returns boolean
   language sql security definer set search_path = public stable as $$
   select exists (select 1 from public.admins where user_id = auth.uid())
 $$;
 
--- 读“我的权益”（到期则派生为 free）
+-- 读“我的权益”（到期则派生为 free；status 即生效档位 plus/pro/ultra）
+drop function if exists public.my_entitlement();
 create or replace function public.my_entitlement()
-  returns table(plan text, status text, expires_at timestamptz)
+  returns table(plan text, status text, expires_at timestamptz, tier text)
   language sql security definer set search_path = public stable as $$
   select e.plan,
-         case when e.expires_at is not null and e.expires_at > now() then 'pro' else 'free' end,
-         e.expires_at
+         case when e.expires_at is not null and e.expires_at > now() then coalesce(e.tier,'pro') else 'free' end,
+         e.expires_at,
+         coalesce(e.tier,'pro')
   from public.entitlements e
   where e.user_id = auth.uid()
 $$;
 
--- 店主：铸造一个兑换码
-create or replace function public.mint_code(p_plan text) returns text
+-- 店主：铸造一个兑换码（带档位）
+drop function if exists public.mint_code(text);
+create or replace function public.mint_code(p_plan text, p_tier text default 'pro') returns text
   language plpgsql security definer set search_path = public as $$
 declare v_code text;
 begin
   if not public.is_admin() then raise exception 'not authorized'; end if;
   if public.plan_months(p_plan) = 0 then raise exception 'invalid plan'; end if;
-  v_code := 'HJ-' || upper(substr(p_plan,1,1)) || '-' || upper(substr(md5(gen_random_uuid()::text),1,8));
-  insert into public.redeem_codes(code, plan) values (v_code, p_plan);
+  if not public.tier_valid(p_tier) then raise exception 'invalid tier'; end if;
+  v_code := 'HJ-' || upper(substr(p_tier,1,2)) || upper(substr(p_plan,1,1)) || '-' || upper(substr(md5(gen_random_uuid()::text),1,8));
+  insert into public.redeem_codes(code, plan, tier) values (v_code, p_plan, p_tier);
   return v_code;
 end $$;
 
--- 店主：批量铸造兑换码
-create or replace function public.mint_codes(p_plan text, p_count int default 5)
+-- 店主：批量铸造兑换码（带档位）
+drop function if exists public.mint_codes(text, int);
+create or replace function public.mint_codes(p_plan text, p_count int default 5, p_tier text default 'pro')
   returns text[]
   language plpgsql security definer set search_path = public as $$
 declare v_codes text[] := '{}'; v_code text; i int;
 begin
   if not public.is_admin() then raise exception 'not authorized'; end if;
   if public.plan_months(p_plan) = 0 then raise exception 'invalid plan'; end if;
+  if not public.tier_valid(p_tier) then raise exception 'invalid tier'; end if;
   if p_count < 1 or p_count > 20 then raise exception 'count must be 1-20'; end if;
   for i in 1..p_count loop
-    v_code := 'HJ-' || upper(substr(p_plan,1,1)) || '-' || upper(substr(md5(gen_random_uuid()::text),1,8));
-    insert into public.redeem_codes(code, plan) values (v_code, p_plan);
+    v_code := 'HJ-' || upper(substr(p_tier,1,2)) || upper(substr(p_plan,1,1)) || '-' || upper(substr(md5(gen_random_uuid()::text),1,8));
+    insert into public.redeem_codes(code, plan, tier) values (v_code, p_plan, p_tier);
     v_codes := v_codes || v_code;
   end loop;
   return v_codes;
 end $$;
 
--- 用户：核销兑换码（原子、防重复、可叠加续期）
+-- 用户：核销兑换码（原子、防重复、可叠加续期；写入档位）
+drop function if exists public.redeem_code(text);
 create or replace function public.redeem_code(p_code text)
-  returns table(plan text, expires_at timestamptz)
+  returns table(plan text, expires_at timestamptz, tier text)
   language plpgsql security definer set search_path = public as $$
-declare v_rc public.redeem_codes; v_uid uuid := auth.uid(); v_m int; v_exp timestamptz;
+declare v_rc public.redeem_codes; v_uid uuid := auth.uid(); v_m int; v_exp timestamptz; v_tier text;
 begin
   if v_uid is null then raise exception 'login required'; end if;
   select * into v_rc from public.redeem_codes where code = upper(trim(p_code)) for update;
@@ -105,44 +126,48 @@ begin
   if v_rc.used_by is not null then raise exception 'code already used'; end if;
   update public.redeem_codes set used_by = v_uid, used_at = now() where code = v_rc.code;
   v_m := public.plan_months(v_rc.plan);
+  v_tier := coalesce(v_rc.tier, 'pro');
   select greatest(coalesce(e.expires_at, now()), now()) into v_exp
     from public.entitlements e where e.user_id = v_uid;
   v_exp := coalesce(v_exp, now()) + (v_m || ' months')::interval;
-  insert into public.entitlements(user_id, plan, started_at, expires_at, source, updated_at)
-    values (v_uid, v_rc.plan, now(), v_exp, 'redeem', now())
+  insert into public.entitlements(user_id, plan, tier, started_at, expires_at, source, updated_at)
+    values (v_uid, v_rc.plan, v_tier, now(), v_exp, 'redeem', now())
   on conflict (user_id) do update
-    set plan = v_rc.plan, expires_at = v_exp, source = 'redeem', updated_at = now();
-  return query select v_rc.plan, v_exp;
+    set plan = v_rc.plan, tier = v_tier, expires_at = v_exp, source = 'redeem', updated_at = now();
+  return query select v_rc.plan, v_exp, v_tier;
 end $$;
 
--- 店主：按邮箱直接开通（对方需先用该邮箱登录过一次）
-create or replace function public.admin_grant(p_email text, p_plan text)
-  returns table(plan text, expires_at timestamptz)
+-- 店主：按邮箱直接开通（带档位；对方需先用该邮箱登录过一次）
+drop function if exists public.admin_grant(text, text);
+create or replace function public.admin_grant(p_email text, p_plan text, p_tier text default 'pro')
+  returns table(plan text, expires_at timestamptz, tier text)
   language plpgsql security definer set search_path = public as $$
 declare v_target uuid; v_m int; v_exp timestamptz;
 begin
   if not public.is_admin() then raise exception 'not authorized'; end if;
   v_m := public.plan_months(p_plan);
   if v_m = 0 then raise exception 'invalid plan'; end if;
+  if not public.tier_valid(p_tier) then raise exception 'invalid tier'; end if;
   select id into v_target from auth.users where lower(email) = lower(trim(p_email));
   if v_target is null then raise exception 'user not found'; end if;
   select greatest(coalesce(e.expires_at, now()), now()) into v_exp
     from public.entitlements e where e.user_id = v_target;
   v_exp := coalesce(v_exp, now()) + (v_m || ' months')::interval;
-  insert into public.entitlements(user_id, plan, started_at, expires_at, source, updated_at)
-    values (v_target, p_plan, now(), v_exp, 'grant', now())
+  insert into public.entitlements(user_id, plan, tier, started_at, expires_at, source, updated_at)
+    values (v_target, p_plan, p_tier, now(), v_exp, 'grant', now())
   on conflict (user_id) do update
-    set plan = p_plan, expires_at = v_exp, source = 'grant', updated_at = now();
-  return query select p_plan, v_exp;
+    set plan = p_plan, tier = p_tier, expires_at = v_exp, source = 'grant', updated_at = now();
+  return query select p_plan, v_exp, p_tier;
 end $$;
 
 -- 仅允许“已登录用户”调用这些函数
-grant execute on function public.my_entitlement()           to authenticated;
-grant execute on function public.redeem_code(text)          to authenticated;
-grant execute on function public.mint_code(text)            to authenticated;
-grant execute on function public.mint_codes(text, int)     to authenticated;
-grant execute on function public.admin_grant(text, text)    to authenticated;
-grant execute on function public.is_admin()                 to authenticated;
+grant execute on function public.my_entitlement()                 to authenticated;
+grant execute on function public.redeem_code(text)                to authenticated;
+grant execute on function public.mint_code(text, text)            to authenticated;
+grant execute on function public.mint_codes(text, int, text)      to authenticated;
+grant execute on function public.admin_grant(text, text, text)    to authenticated;
+grant execute on function public.tier_valid(text)                 to authenticated;
+grant execute on function public.is_admin()                       to authenticated;
 
 -- ============================================================================
 -- Phase 2: 云端同步
@@ -201,3 +226,8 @@ create policy "admins write config" on public.app_config
   with check (public.is_admin());
 
 grant select on public.app_config to authenticated;
+
+-- ============================================================================
+-- 让 PostgREST 立即重新加载函数签名（新增 p_tier 参数后需要）
+-- ============================================================================
+notify pgrst, 'reload schema';

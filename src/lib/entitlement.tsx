@@ -193,9 +193,9 @@ interface Ctx {
   // 操作
   startTrial: () => void
   redeem: (code: string) => Promise<{ ok: boolean; msg: string }>
-  mintCode: (plan: Plan) => Promise<string>
-  mintCodes: (plan: Plan, count?: number) => Promise<string[]>
-  adminGrant: (email: string, plan: Plan) => Promise<{ ok: boolean; msg: string }>
+  mintCode: (plan: Plan, tier?: Tier) => Promise<string>
+  mintCodes: (plan: Plan, count?: number, tier?: Tier) => Promise<string[]>
+  adminGrant: (email: string, plan: Plan, tier?: Tier) => Promise<{ ok: boolean; msg: string }>
   refresh: () => Promise<void>
   restore: () => void
   resetLocal: () => void
@@ -316,33 +316,36 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
         setLoginOpen(true)
         return { ok: false, msg: '请先登录后再兑换' }
       }
-      const { error } = await supabase.rpc('redeem_code', { p_code: code.trim() })
+      const { data, error } = await supabase.rpc('redeem_code', { p_code: code.trim() })
       if (error) return { ok: false, msg: zhRpc(error.message) }
       await refresh()
       setPaywallOpen(false)
-      return { ok: true, msg: '已开通 Pro 🎉' }
+      const row = Array.isArray(data) ? data[0] : null
+      const tierName = TIER_INFO.find(t => t.tier === (row?.tier as Tier))?.name ?? '会员'
+      return { ok: true, msg: `已开通 ${tierName} 🎉` }
     },
     [refresh],
   )
 
-  const mintCode = useCallback(async (plan: Plan) => {
-    const { data, error } = await supabase.rpc('mint_code', { p_plan: plan })
+  const mintCode = useCallback(async (plan: Plan, tier: Tier = 'pro') => {
+    const { data, error } = await supabase.rpc('mint_code', { p_plan: plan, p_tier: tier })
     if (error) throw new Error(zhRpc(error.message))
     return data as string
   }, [])
 
-  const mintCodes = useCallback(async (plan: Plan, count = 5) => {
-    const { data, error } = await supabase.rpc('mint_codes', { p_plan: plan, p_count: count })
+  const mintCodes = useCallback(async (plan: Plan, count = 5, tier: Tier = 'pro') => {
+    const { data, error } = await supabase.rpc('mint_codes', { p_plan: plan, p_count: count, p_tier: tier })
     if (error) throw new Error(zhRpc(error.message))
     return data as string[]
   }, [])
 
   const adminGrant = useCallback(
-    async (email: string, plan: Plan) => {
-      const { error } = await supabase.rpc('admin_grant', { p_email: email.trim(), p_plan: plan })
+    async (email: string, plan: Plan, tier: Tier = 'pro') => {
+      const { error } = await supabase.rpc('admin_grant', { p_email: email.trim(), p_plan: plan, p_tier: tier })
       if (error) return { ok: false, msg: zhRpc(error.message) }
       await refresh()
-      return { ok: true, msg: `已为 ${email.trim()} 开通 Pro` }
+      const tierName = TIER_INFO.find(t => t.tier === tier)?.name ?? 'Pro'
+      return { ok: true, msg: `已为 ${email.trim()} 开通 ${tierName}` }
     },
     [refresh],
   )

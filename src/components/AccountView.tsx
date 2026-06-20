@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { AssetAccount, Expense } from '../types'
-import { useEntitlement, TIER_INFO, type Plan } from '../lib/entitlement'
+import { useEntitlement, TIER_INFO, type Plan, type Tier } from '../lib/entitlement'
 import { categoryMeta } from '../lib/categories'
 import { exportToJSON, importFromJSON, loadBudget, saveBudget, persist, sortByTime } from '../lib/storage'
 import { pushToCloud, pullFromCloud, mergeRecords, getLastSyncDisplay } from '../lib/sync'
@@ -15,7 +15,7 @@ const TIER_GRADIENTS: Record<string, string> = {
   ultra: 'linear-gradient(135deg,#af52de,#ff375f)',
 }
 
-const APP_VERSION = '0.4.4'
+const APP_VERSION = '0.4.5'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
@@ -260,12 +260,15 @@ function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; on
   const [busy, setBusy] = useState(false)
   const [email, setEmail] = useState('')
   const [grantMsg, setGrantMsg] = useState<string | null>(null)
+  const [tier, setTier] = useState<Tier>('pro')
+
+  const tierName = TIER_INFO.find(t => t.tier === tier)?.name ?? 'Pro'
 
   const mint = async (plan: Plan) => {
     setBusy(true)
     try {
-      setCodes(await mintCodes(plan, 5))
-      onToast('已生成 5 个兑换码')
+      setCodes(await mintCodes(plan, 5, tier))
+      onToast(`已生成 5 个 ${tierName} 兑换码`)
     } catch (e) {
       onToast(e instanceof Error ? e.message : '发码失败')
     }
@@ -280,7 +283,7 @@ function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; on
   const grant = async (plan: Plan) => {
     if (!email.trim() || busy) return
     setBusy(true); setGrantMsg(null)
-    const r = await adminGrant(email, plan)
+    const r = await adminGrant(email, plan, tier)
     setBusy(false)
     setGrantMsg(r.msg)
     if (r.ok) onToast(r.msg)
@@ -290,8 +293,29 @@ function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; on
     <div className="card p-4 border border-[#ff9f0a]/30">
       <div className="text-[12px] text-[#ff9f0a] font-semibold mb-3">🛠️ 店主面板（仅你可见）</div>
 
+      {/* 档位选择 */}
+      <div className="text-[12px] text-[#86868b] mb-2">① 选择会员档位</div>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {TIER_INFO.map((t) => {
+          const active = t.tier === tier
+          return (
+            <button
+              key={t.tier}
+              onClick={() => { setTier(t.tier); setCodes([]); setGrantMsg(null) }}
+              className="rounded-xl py-2 text-[13px] font-semibold transition-all"
+              style={active
+                ? { background: t.gradient, color: '#fff' }
+                : { background: 'var(--soft,#f5f5f7)', color: '#86868b' }}
+            >
+              {t.name}
+            </button>
+          )
+        })}
+      </div>
+      <div className="text-[11px] text-[#86868b] mb-3 -mt-2">{TIER_INFO.find(t => t.tier === tier)?.tagline} · {TIER_INFO.find(t => t.tier === tier)?.features[0]}</div>
+
       {/* 发码 */}
-      <div className="text-[12px] text-[#86868b] mb-2">批量生成 5 个兑换码（每个仅可用一次）</div>
+      <div className="text-[12px] text-[#86868b] mb-2">② 批量生成 5 个 <b className="text-[#1d1d1f] dark:text-[#f5f5f7]">{tierName}</b> 兑换码（每个仅可用一次）</div>
       <div className="grid grid-cols-3 gap-2">
         {(['monthly', 'quarterly', 'annual'] as Plan[]).map((p) => (
           <button key={p} disabled={busy} onClick={() => mint(p)} className="btn-ghost justify-center text-[13px]">{planLabel(p)}×5</button>
@@ -310,7 +334,7 @@ function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; on
       )}
 
       {/* 按邮箱直接开通 */}
-      <div className="text-[12px] text-[#86868b] mt-4 mb-2">或：按买家邮箱直接开通（对方需先登录过一次）</div>
+      <div className="text-[12px] text-[#86868b] mt-4 mb-2">或：按买家邮箱直接开通 <b className="text-[#1d1d1f] dark:text-[#f5f5f7]">{tierName}</b>（对方需先登录过一次）</div>
       <input
         type="email"
         value={email}

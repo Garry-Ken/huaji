@@ -197,8 +197,16 @@ function detectType(text: string): TransactionType {
 const TIME_START = /^(?:早上|早晨|上午|中午|下午|午后|傍晚|晚上|今晚|昨晚|凌晨|夜宵|宵夜|早餐|午餐|晚餐)/
 const TRANS_TIME = /^(?:然后|最后|还有|另外|接着|后来|之后)\s*(?:早上|早晨|上午|中午|下午|午后|傍晚|晚上|今晚|凌晨|早餐|午餐|晚餐)/
 const INCOME_START = /^(?:发工资|工资[发到]|给我[转打]|收到|到账|进账)/
+// 明显的新消费动作（交通/网购/缴费）作为新一笔的开头
+const ACTIVITY_START = /^(?:打车|打的|打了个?车|地铁|公交|坐车|加油|停车|淘宝|京东|拼多多|网购|充值|充了)/
 
-const AMOUNT_ONLY_RE = /^\d+(?:\.\d+)?\s*(?:元|块钱?|块|圆|刀|美元|rmb|¥|￥)?$/i
+// 纯金额尾句：可带「总共/一共/花了/付了」等前缀和「元/块/钱」后缀，支持中文数字
+// 例："19块" "总共花了十九块钱" "一共200" "大概花了三十"
+const AMOUNT_TAIL_RE = /^(?:总共|一共|共计|合计|总计|加起来|算下来|共|前后)?\s*(?:大概|大约|差不多|约|大概是|大约是)?\s*(?:花了?|用了?|付了?|消费了?|一共|总共|是)?\s*\d+(?:\.\d+)?\s*(?:元|块钱?|块|圆|钱|毛|角|刀|美元|rmb|¥|￥)*\s*$/i
+
+function isAmountTail(seg: string): boolean {
+  return AMOUNT_TAIL_RE.test(chineseToArabic(seg.trim()))
+}
 
 function splitSegments(rawText: string): string[] {
   const text = rawText.trim()
@@ -206,10 +214,10 @@ function splitSegments(rawText: string): string[] {
   const sentences = text.split(/[。；！？\n]+/).map(s => s.trim()).filter(Boolean)
   const raw: string[] = []
   for (const sent of sentences) raw.push(...splitWithinSentence(sent))
-  // Merge amount-only segments (e.g. "19块") back into the previous segment
+  // 把「纯金额尾句」（如 "19块" / "总共花了十九块钱"）合并回上一段，不另算一笔
   const result: string[] = []
   for (const seg of raw) {
-    if (result.length > 0 && AMOUNT_ONLY_RE.test(seg)) {
+    if (result.length > 0 && isAmountTail(seg)) {
       result[result.length - 1] += '，' + seg
     } else {
       result.push(seg)
@@ -228,7 +236,8 @@ function splitWithinSentence(text: string): string[] {
     const isNew = buffer && (
       TIME_START.test(clause) ||
       TRANS_TIME.test(clause) ||
-      INCOME_START.test(clause)
+      INCOME_START.test(clause) ||
+      ACTIVITY_START.test(clause)
     )
     if (isNew) {
       segments.push(buffer)
@@ -287,7 +296,7 @@ export function parseExpense(rawText: string, now = new Date()): ParseResult {
 
   const category: CategoryId = txType === 'income' ? 'income' : isDebt ? 'social' : classify(lower, foodHits.length > 0)
 
-  const items = extractFoodNames(text, foodHits)
+  const items = extractFoodNames(text, foodHits, location, merchant)
   const title = buildTitle({ text: lower, category, items, merchant })
 
   const meal: MealType | undefined = category === 'food' ? mealFromTime ?? mealByHour(time) : undefined
@@ -319,7 +328,7 @@ function extractAmount(text: string): number | null {
   if (verb) return round2(parseFloat(verb[1]))
 
   // 兜底：取最后一个不像「时间/数量」的数字
-  const tokens = [...text.matchAll(/(\d+(?:\.\d+)?)\s*([点号月日年岁周楼路班杯个只份位斤克ml毫升]?)/g)]
+  const tokens = [...text.matchAll(/(\d+(?:\.\d+)?)\s*([点号月日年岁周楼路班杯个只份位斤克盘桌顿碗双对把条根串片袋瓶盒包桶罐颗粒口ml毫升]?)/g)]
   const moneyish = tokens.filter((t) => {
     if (t[2]) return false // 后面有时间/量词单位
     // 排除时间模式中的数字：12:30 的 "30"，或 "12" 后面紧跟 ":"
@@ -431,22 +440,53 @@ function extractLocation(text: string): string | undefined {
   return place
 }
 
-const NOISE_RE = /\d+(?:\.\d+)?\s*(?:元|块钱?|¥|￥)?/gi
-const VERB_RE = /(?:吃(?:了|饭|了饭)?|喝(?:了|水|了水)?|买了?|点了?|花了|来[一个份碗杯]|聚餐|聚会|早茶|宵夜|夜宵|早餐|午餐|晚餐|加餐|下午茶|办酒席|请客|一共|总共|共计|合计|人均|AA|中午|下午|上午|晚上|今天|昨天|在\S{1,4})/g
+// 量词短语：一盘/两碗/3个/一份…（含中文与阿拉伯数字）
+const QUANTITY_RE = /[一二两三四五六七八九十几半\d]+\s*(?:份|碗|杯|个|只|盒|袋|瓶|块|片|盘|包|桶|罐|条|把|颗|粒|串|根|口|桌|顿|双|对)/g
+// 金额片段：30 / 30元 / 30块钱 / ¥30
+const AMOUNT_FRAG_RE = /\d+(?:\.\d+)?\s*(?:元|块钱?|块|圆|钱|毛|角|¥|￥)?/g
+// 菜名前缀垃圾：时间词 + 地点介词 + 进食动词 + 量词，从开头连续吃掉
+const FOOD_LEADING_RE = /^(?:今天|昨天|前天|明天|早上|早晨|上午|中午|下午|午后|傍晚|晚上|今晚|昨晚|凌晨|和|跟|与|及|在|去|到|的|了|还|又|再|顿|份|聚餐|聚会|早茶|早点|宵夜|夜宵|加餐|下午茶|办酒席|请客|请|约了?|和朋友|和同事|跟朋友|跟同事|吃了?饭?|喝了?水?|点了?|买了?|来了?|整了?|搞了?|煮了?|做了?|烤了?|炸了?|蒸了?|炒了?|啃了?|嗑了?|嚼了?|[一二两三四五六七八九十几半\d]+\s*(?:份|碗|杯|个|只|盒|袋|瓶|块|片|盘|包|桶|罐|条|把|颗|粒|串|根|口|桌|顿))+/
+// 停用词：含这些的片段不是菜名（时间/金额/结账/评价类）
+const FOOD_STOP_RE = /时间|地点|总共|一共|大概|大约|差不多|左右|结账|买单|人均|花了|花费|消费|合计|共计|付了|用了|算下来|加起来|块钱|多少钱|一顿|好吃|难吃|味道|好喝|不错|很赞|划算|便宜|太贵|有点贵|实惠|份量|分量|管饱/
+// 兜底：进食动词 + 量词 + 菜名（"吃了碗粥" "喝了杯豆浆"）
 const QUANTIFIER_FOOD_RE = /(?:吃了?|喝了?|买了?|点了?|来了?|煮了?|做了?|烤了?|炸了?|蒸了?|炒了?|嚼了?|啃了?|嗑了?)\s*(?:一|两|三|几|点|些)?\s*(?:碗|杯|个|份|根|串|盒|袋|瓶|块|片|盘|包|桶|罐|条|把|颗|粒|口|块儿)\s*([一-鿿]{1,6})/
 
-const QUANTITY_RE = /[一二两三四五六七八九十\d]+\s*[份碗杯个只盒袋瓶块片盘包桶罐条把颗粒串根]/g
+/** 把一个小句洗成纯菜名（去地点、去金额、去量词、去前缀垃圾） */
+function cleanDish(seg: string, location?: string, merchant?: string): string {
+  let s = seg.trim()
+  if (location) s = s.split(location).join('')
+  if (merchant) s = s.split(merchant).join('')
+  s = s
+    .replace(AMOUNT_FRAG_RE, '')
+    .replace(QUANTITY_RE, '')
+    .replace(FOOD_LEADING_RE, '')
+    .replace(/^(?:杯|碗|盘|份|个|只|根|块|片|串|瓶|盒|袋|桶|罐)/, '') // 光杆量词，如"杯拿铁"
+    .replace(/^[的了和跟与及在去到，,、]+/, '')
+    .replace(/(?:吃饭|吃了饭|吃的|用餐|的)$/, '')                    // 收尾的"吃饭/吃的"
+    .replace(/[的了。、，；;：:！？\s]+$/, '')
+    .trim()
+  return s
+}
 
-function extractFoodNames(text: string, foodHits: { match: string[]; name: string }[]): string[] {
+function extractFoodNames(
+  text: string,
+  foodHits: { match: string[]; name: string }[],
+  location?: string,
+  merchant?: string,
+): string[] {
   const lower = text.toLowerCase()
-  const segments = text.split(/[，,、；;。！？\n]+/).map(s => s.trim()).filter(Boolean)
+  // 先剔除显式时间句，如 "时间是中午 12:30"、"，时间 12 点"
+  const core = text.replace(/[，,。；;、]?\s*时间[是为]?[^，,。；;、！？\n]*/g, '')
+  const segments = core.split(/[，,、；;。！？\n]+/).map(s => s.trim()).filter(Boolean)
   if (segments.length > 1) {
     const names: string[] = []
     for (const seg of segments) {
-      const clean = seg.replace(NOISE_RE, '').replace(VERB_RE, '').replace(QUANTITY_RE, '').replace(/[块元角毛]$/, '').trim()
-      if (clean.length < 2 || clean.length > 12) continue
-      if (/^\d+$/.test(clean)) continue
-      if (!/[一-鿿]/.test(clean)) continue
+      if (FOOD_STOP_RE.test(seg)) continue
+      const clean = cleanDish(seg, location, merchant)
+      if (clean.length < 1 || clean.length > 12) continue
+      if (/[\d:：]/.test(clean)) continue        // 残留数字/冒号 → 非菜名
+      if (!/[一-鿿]/.test(clean)) continue        // 必须含中文
+      if (FOOD_STOP_RE.test(clean)) continue
       names.push(clean)
     }
     if (names.length > 0) return dedupe(names).slice(0, 30)
@@ -461,12 +501,12 @@ function extractFoodNames(text: string, foodHits: { match: string[]; name: strin
       }
       if (best) matched.push(best)
     }
-    // Remove shorter matches that are substrings of longer ones
+    // 去掉是更长匹配子串的短词（"蛋" vs "蛋糕"）
     const filtered = matched.filter(a => !matched.some(b => b.length > a.length && b.includes(a)))
     if (filtered.length > 0) return dedupe(filtered)
   }
 
-  // Fallback: extract food name after quantifier: "吃了碗粥" "喝了杯豆浆" "吃了根冰棍"
+  // 兜底：进食动词 + 量词 + 菜名（"吃了碗粥"）
   const qm = text.match(QUANTIFIER_FOOD_RE)
   if (qm && qm[1]) {
     const foodName = qm[1].replace(/\d+.*$/, '').trim()
