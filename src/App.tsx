@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Expense, InputSource } from './types'
+import type { AssetAccount, Expense, InputSource, Ledger } from './types'
 import { parseMultiExpense } from './lib/parser'
-import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid, hasSampleFlag, setSampleFlag, clearSampleFlag, loadBudget } from './lib/storage'
+import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid, hasSampleFlag, setSampleFlag, clearSampleFlag, loadBudget, DEFAULT_LEDGER, loadLedgers, persistLedgers, loadAccounts, persistAccounts } from './lib/storage'
 import { generateSample } from './lib/sampleData'
 import { RecordsView } from './components/RecordsView'
 import { Dashboard } from './components/Dashboard'
@@ -12,6 +12,7 @@ import { EditSheet } from './components/EditSheet'
 import { Paywall } from './components/Paywall'
 import { LoginSheet } from './components/LoginSheet'
 import { PasswordResetSheet } from './components/PasswordResetSheet'
+import { LedgerSwitcher } from './components/LedgerSwitcher'
 import { useEntitlement } from './lib/entitlement'
 import { WalletIcon, PieIcon, HealthIcon, UserIcon, CrownIcon, SunIcon, MoonIcon, PlusIcon, CheckIcon } from './components/icons'
 
@@ -32,6 +33,9 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [dark, setDark] = useState(false)
   const [sampleMode, setSampleMode] = useState(hasSampleFlag())
+  const [ledgers, setLedgers] = useState<Ledger[]>([])
+  const [activeLedgerId, setActiveLedgerId] = useState('default')
+  const [accounts, setAccounts] = useState<AssetAccount[]>([])
   const { status, daysLeft, openPaywall } = useEntitlement()
 
   // 初始化：主题 + 数据（首次注入示例）
@@ -41,13 +45,14 @@ export default function App() {
     setDark(saved ? saved === 'dark' : !!prefersDark)
 
     let data = load()
-    // 仅开发环境注入示例数据；正式安装包 / 网页首次启动是干净空表
     if (import.meta.env.DEV && data.length === 0 && !hasSeeded()) {
       data = generateSample()
       persist(data)
       markSeeded()
     }
     setExpenses(sortByTime(data))
+    setLedgers(loadLedgers())
+    setAccounts(loadAccounts())
   }, [])
 
   useEffect(() => {
@@ -86,9 +91,24 @@ export default function App() {
     showToast('已清空全部记录')
   }
 
+  const updateLedgers = useCallback((next: Ledger[]) => { setLedgers(next); persistLedgers(next) }, [])
+  const updateAccounts = useCallback((next: AssetAccount[]) => { setAccounts(next); persistAccounts(next) }, [])
+
+  const addLedger = useCallback((l: Ledger) => { updateLedgers([...ledgers, l]); setActiveLedgerId(l.id) }, [ledgers, updateLedgers])
+  const deleteLedger = useCallback((id: string) => {
+    updateLedgers(ledgers.filter(l => l.id !== id))
+    if (activeLedgerId === id) setActiveLedgerId('default')
+  }, [ledgers, activeLedgerId, updateLedgers])
+
+  const filteredExpenses = useMemo(() => {
+    if (activeLedgerId === 'default') return expenses.filter(e => !e.ledgerId || e.ledgerId === 'default')
+    return expenses.filter(e => e.ledgerId === activeLedgerId)
+  }, [expenses, activeLedgerId])
+
   const addFromText = (raw: string, source: InputSource) => {
     const results = parseMultiExpense(raw)
-    const newItems = results.map(p => makeExpense(p, raw, source))
+    const ledId = activeLedgerId !== 'default' ? activeLedgerId : undefined
+    const newItems = results.map(p => makeExpense(p, raw, source, ledId))
     update([...newItems, ...expenses])
     if (results.length === 1) {
       showToast(results[0].amount != null ? '已记录 ✓' : '已记录 · 记得补填金额')
@@ -140,7 +160,9 @@ export default function App() {
             <WalletIcon size={18} />
           </div>
           <div className="leading-none">
-            <div className="font-semibold text-[16px]">花迹</div>
+            <div className="font-semibold text-[16px] flex items-center gap-2">花迹
+              <LedgerSwitcher ledgers={ledgers} activeLedgerId={activeLedgerId} defaultLedger={DEFAULT_LEDGER} onSwitch={setActiveLedgerId} onAdd={addLedger} onDelete={deleteLedger} />
+            </div>
             {budget ? (
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div className="w-16 h-1.5 rounded-full bg-[#00000010] dark:bg-[#ffffff14] overflow-hidden">
@@ -190,10 +212,10 @@ export default function App() {
 
       {/* 内容 */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-5 pb-28 sm:pb-10">
-        {tab === 'records' && <RecordsView expenses={expenses} onAdd={addFromText} onEdit={(e) => { setEditing(e); setEditingNew(false) }} onLoadSample={loadSample} sampleMode={sampleMode} onClearAll={clearAllData} />}
-        {tab === 'stats' && <Dashboard expenses={expenses} onGotoHealth={() => setTab('health')} budget={budget} />}
-        {tab === 'health' && <HealthPanel expenses={expenses} />}
-        {tab === 'account' && <AccountView expenses={expenses} onToast={showToast} onClearData={clearAllData} onReload={(records) => { setExpenses(records); persist(records) }} />}
+        {tab === 'records' && <RecordsView expenses={filteredExpenses} onAdd={addFromText} onEdit={(e) => { setEditing(e); setEditingNew(false) }} onLoadSample={loadSample} sampleMode={sampleMode} onClearAll={clearAllData} />}
+        {tab === 'stats' && <Dashboard expenses={filteredExpenses} onGotoHealth={() => setTab('health')} budget={budget} onSettleDebt={(person, amount) => { const type = amount > 0 ? 'income' as const : 'expense' as const; const e: Expense = { id: uid(), type, amount: Math.abs(amount), category: 'social', title: `${person} 清账`, items: [], occurredAt: Date.now(), createdAt: Date.now(), source: 'manual', rawText: `${person}清账${Math.abs(amount)}`, counterparty: person, isDebt: true, ...(activeLedgerId !== 'default' ? { ledgerId: activeLedgerId } : {}) }; update([e, ...expenses]); showToast(`已清账 · ${person}`) }} />}
+        {tab === 'health' && <HealthPanel expenses={filteredExpenses} />}
+        {tab === 'account' && <AccountView expenses={expenses} onToast={showToast} onClearData={clearAllData} onReload={(records) => { setExpenses(records); persist(records) }} accounts={accounts} onAccountsChange={updateAccounts} />}
       </main>
 
       {/* 移动端底部导航 */}

@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Expense } from '../types'
+import type { AssetAccount, Expense } from '../types'
 import { useEntitlement, type Plan } from '../lib/entitlement'
 import { categoryMeta } from '../lib/categories'
 import { exportToJSON, importFromJSON, loadBudget, saveBudget, persist, sortByTime } from '../lib/storage'
 import { pushToCloud, pullFromCloud, mergeRecords, getLastSyncDisplay } from '../lib/sync'
 import { CrownIcon, LockIcon, CheckIcon, DownloadIcon, CloudIcon, SparkIcon, ChevronRight, UserIcon, UploadIcon, ShieldIcon, TargetIcon, RefreshIcon, InfoIcon } from './icons'
+import { AssetsCard } from './AssetsCard'
 
 const PRO_ROWS = [
   { key: 'period', label: '季度 / 半年 / 年度深度分析' },
@@ -16,7 +17,7 @@ const PRO_ROWS = [
   { key: 'history', label: '无限历史记录' },
 ]
 
-const APP_VERSION = '0.2.2'
+const APP_VERSION = '0.3.0'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
@@ -41,7 +42,7 @@ function planLabel(p?: string) {
   return p === 'monthly' ? '月度' : p === 'quarterly' ? '季度' : p === 'annual' ? '年度' : 'Pro'
 }
 
-export function AccountView({ expenses, onToast, onClearData, onReload }: { expenses: Expense[]; onToast: (m: string) => void; onClearData: () => void; onReload: (records: Expense[]) => void }) {
+export function AccountView({ expenses, onToast, onClearData, onReload, accounts, onAccountsChange }: { expenses: Expense[]; onToast: (m: string) => void; onClearData: () => void; onReload: (records: Expense[]) => void; accounts?: AssetAccount[]; onAccountsChange?: (a: AssetAccount[]) => void }) {
   const ent = useEntitlement()
   const { status, isPro, daysLeft, aiEnhance, setAiEnhance, openPaywall, user, isAdmin, signOut, openLogin, proPlan, proExpiresAt } = ent
   const fileRef = useRef<HTMLInputElement>(null)
@@ -119,6 +120,9 @@ export function AccountView({ expenses, onToast, onClearData, onReload }: { expe
           ))}
         </div>
       </div>
+
+      {/* 资产账户 */}
+      {accounts && onAccountsChange && <AssetsCard accounts={accounts} onChange={onAccountsChange} />}
 
       {/* 月度预算 */}
       <div className="card overflow-hidden divide-y divide-[#00000008] dark:divide-[#ffffff0d]">

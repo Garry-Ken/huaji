@@ -23,9 +23,11 @@ function Row({ e, onClick }: { e: Expense; onClick: () => void }) {
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-[15px] truncate">{e.title || m.label}</span>
           {e.meal && <MealTag meal={e.meal} />}
+          {e.isDebt && <span className={`text-[10px] rounded-full px-1.5 py-0.5 font-medium ${e.type === 'expense' ? 'bg-[#ff9f0a]/15 text-[#ff9f0a]' : 'bg-[#30d158]/15 text-[#30d158]'}`}>{e.type === 'expense' ? '借出' : '借入'}</span>}
         </div>
         <div className="flex items-center gap-2 text-[12px] text-[#86868b] mt-0.5 truncate">
           <span>{timeShort(e.occurredAt)}</span>
+          {e.counterparty && <span>👤{e.counterparty}</span>}
           {e.location && <span className="inline-flex items-center gap-0.5"><MapPinIcon size={11} />{e.location}</span>}
           {e.merchant && !e.location && <span>{e.merchant}</span>}
           <span className="inline-flex items-center gap-0.5 opacity-70">

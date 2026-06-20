@@ -47,6 +47,9 @@ export interface Expense {
   rawText: string // 原始输入文本
   meal?: MealType // 餐次（饮食类）
   health?: HealthResult // 饮食健康分析（饮食类）
+  ledgerId?: string // 所属账本，undefined = 'default'
+  counterparty?: string // 借贷对方
+  isDebt?: boolean // 是否为借贷记录
 }
 
 /** 解析器产出（写入存储前的草稿） */
@@ -62,6 +65,25 @@ export interface ParseResult {
   meal?: MealType
   health?: HealthResult
   confidence: number // 0-1，解析置信度
+  counterparty?: string
+  isDebt?: boolean
 }
 
 export type PeriodKind = 'day' | 'week' | 'month' | 'quarter' | 'half' | 'year'
+
+/** 账本 */
+export interface Ledger {
+  id: string
+  name: string
+  emoji: string
+  createdAt: number
+}
+
+/** 资产账户 */
+export interface AssetAccount {
+  id: string
+  name: string
+  icon: string
+  balance: number
+  createdAt: number
+}

@@ -8,6 +8,7 @@ import { aggregateHealth } from '../lib/health'
 import { Donut, Bars, type Slice } from './charts'
 import { StatTile, HealthRing } from './bits'
 import { ChevronLeft, ChevronRight, SparkIcon, LockIcon } from './icons'
+import { DebtSection } from './DebtSection'
 
 const KINDS: { id: PeriodKind; label: string }[] = [
   { id: 'day', label: '日' },
@@ -18,7 +19,7 @@ const KINDS: { id: PeriodKind; label: string }[] = [
   { id: 'year', label: '年度' },
 ]
 
-export function Dashboard({ expenses, onGotoHealth, budget }: { expenses: Expense[]; onGotoHealth?: () => void; budget?: number | null }) {
+export function Dashboard({ expenses, onGotoHealth, budget, onSettleDebt }: { expenses: Expense[]; onGotoHealth?: () => void; budget?: number | null; onSettleDebt?: (person: string, amount: number) => void }) {
   const [kind, setKind] = useState<PeriodKind>('month')
   const [anchor, setAnchor] = useState<number>(Date.now())
   const { isPro, openPaywall } = useEntitlement()
@@ -59,7 +60,24 @@ export function Dashboard({ expenses, onGotoHealth, budget }: { expenses: Expens
       label: b.label,
       value: expenseItems.filter((e) => e.occurredAt >= b.start && e.occurredAt < b.end).reduce((s, e) => s + e.amount, 0),
     }))
+    const incomeBars = buckets.map((b) => ({
+      label: b.label,
+      value: incomeItems.filter((e) => e.occurredAt >= b.start && e.occurredAt < b.end).reduce((s, e) => s + e.amount, 0),
+    }))
     const highlightIndex = buckets.findIndex((b) => now >= b.start && now < b.end)
+
+    const prevIncome = expenses
+      .filter((e) => e.occurredAt >= prev.start && e.occurredAt < prev.end && e.type === 'income')
+      .reduce((s, e) => s + e.amount, 0)
+
+    const incomeBySource = new Map<string, number>()
+    for (const e of incomeItems) {
+      const label = e.title || e.rawText.slice(0, 8) || '其他收入'
+      incomeBySource.set(label, (incomeBySource.get(label) ?? 0) + e.amount)
+    }
+    const incomeSources = [...incomeBySource.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
 
     const elapsedEnd = Math.min(now, end)
     const days = Math.max(1, Math.ceil((elapsedEnd - start) / DAY))
@@ -68,11 +86,12 @@ export function Dashboard({ expenses, onGotoHealth, budget }: { expenses: Expens
     const health = aggregateHealth(inRange.filter((e) => e.category === 'food'))
 
     const atPresent = end > now
-    return { start, end, inRange, totalExpense, totalIncome, prevExpense, cats, bars, highlightIndex, perDay, count: expenseItems.length, health, atPresent }
+    return { start, end, inRange, totalExpense, totalIncome, prevExpense, prevIncome, cats, bars, incomeBars, incomeSources, highlightIndex, perDay, count: expenseItems.length, incomeCount: incomeItems.length, health, atPresent }
   }, [expenses, kind, anchor])
 
   const slices: Slice[] = view.cats.map((c) => ({ label: c.meta.label, value: c.value, color: c.meta.color }))
   const delta = view.prevExpense > 0 ? ((view.totalExpense - view.prevExpense) / view.prevExpense) * 100 : null
+  const incomeDelta = view.prevIncome > 0 ? ((view.totalIncome - view.prevIncome) / view.prevIncome) * 100 : null
   const barUnit = kind === 'day' ? '时段' : kind === 'week' || kind === 'month' ? '每日' : '每月'
 
   return (
@@ -216,6 +235,60 @@ export function Dashboard({ expenses, onGotoHealth, budget }: { expenses: Expens
         )}
       </div>
 
+      {/* 收入趋势 + 来源（仅有收入时显示） */}
+      {view.totalIncome > 0 && (
+        <>
+          <div className="card p-5">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <div className="text-[13px] text-[#86868b]">总收入</div>
+                <div className="text-[28px] font-bold tracking-tight leading-tight text-[#30d158]">+{yuan(view.totalIncome)}</div>
+                {incomeDelta != null && (
+                  <div className={`text-[13px] mt-0.5 ${incomeDelta > 0 ? 'text-[#30d158]' : 'text-[#ff3b30]'}`}>
+                    {incomeDelta > 0 ? '↑' : '↓'} {Math.abs(incomeDelta).toFixed(0)}% 较上一{KINDS.find((k) => k.id === kind)?.label}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <StatTile label="笔数" value={view.incomeCount} />
+                <StatTile label="单笔均" value={yuan(view.incomeCount ? view.totalIncome / view.incomeCount : 0)} />
+              </div>
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[15px] font-semibold">收入趋势</h3>
+              <span className="text-[12px] text-[#86868b]">{barUnit}</span>
+            </div>
+            <Bars data={view.incomeBars} highlightIndex={view.highlightIndex} formatValue={(v) => yuan(v)} color="#30d158" />
+          </div>
+
+          <div className="card p-5">
+            <h3 className="text-[15px] font-semibold mb-3">收入来源</h3>
+            <div className="space-y-2.5">
+              {view.incomeSources.map((s) => {
+                const pct = view.totalIncome > 0 ? (s.value / view.totalIncome) * 100 : 0
+                return (
+                  <div key={s.label} className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[15px] shrink-0 bg-[#30d158]/10">💰</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between text-[13px]">
+                        <span className="font-medium">{s.label}</span>
+                        <span className="tabular-nums text-[#30d158]">+{yuan(s.value)} <span className="text-[#86868b]">· {pct.toFixed(0)}%</span></span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-[#00000008] dark:bg-[#ffffff12] mt-1 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#30d158' }} />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* 饮食健康概览（teaser） */}
       {view.health.mealCount > 0 && (
         <button onClick={onGotoHealth} className="card p-5 w-full text-left flex items-center gap-4 hover:shadow-apple-lg transition-shadow">
@@ -229,6 +302,8 @@ export function Dashboard({ expenses, onGotoHealth, budget }: { expenses: Expens
           <ChevronRight size={18} className="text-[#86868b]" />
         </button>
       )}
+
+      <DebtSection expenses={expenses} onSettle={(person, amount) => onSettleDebt?.(person, amount)} />
     </div>
   )
 }

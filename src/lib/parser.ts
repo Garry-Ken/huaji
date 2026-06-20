@@ -136,15 +136,54 @@ const INCOME_KW = new RegExp([
   '打赏', '收到打赏',
 ].join('|'))
 
+// ⑤ 借贷检测
+const DEBT_LEND = /借给|借出|借了.{0,4}给/
+const DEBT_BORROW = /向.{0,4}借|跟.{0,4}借|找.{0,4}借|问.{0,4}借|借我|借入/
+const DEBT_SETTLE = /还我|还给|清账|结清|还了?\s*\d/
+const DEBT_ANY = /借给|借出|借了|借我|借入|向.{0,3}借|跟.{0,3}借|找.{0,3}借|欠|还我|还给|清账|结清/
+
+function detectDebt(text: string): { isDebt: boolean; type: TransactionType } | null {
+  if (!DEBT_ANY.test(text)) return null
+  if (DEBT_LEND.test(text)) return { isDebt: true, type: 'expense' }
+  if (DEBT_BORROW.test(text)) return { isDebt: true, type: 'income' }
+  if (DEBT_SETTLE.test(text)) {
+    if (/还我|还了我/.test(text)) return { isDebt: true, type: 'income' }
+    if (/还给|我还/.test(text)) return { isDebt: true, type: 'expense' }
+    return { isDebt: true, type: 'expense' }
+  }
+  return null
+}
+
+// ⑥ 交易对方提取
+const NON_PERSON = new Set(['还款','还贷','还花呗','还信用卡','还借呗','还白条','还钱','账','房租','利息','给我'])
+const PERSON_PATTERNS: [RegExp, number][] = [
+  [/借给([一-鿿]{1,4})/, 1],
+  [/借([一-鿿]{1,4})\d/, 1],
+  [/([一-鿿]{1,4})借我/, 1],
+  [/向([一-鿿]{1,4})借/, 1],
+  [/跟([一-鿿]{1,4})借/, 1],
+  [/找([一-鿿]{1,4})借/, 1],
+  [/问([一-鿿]{1,4})借/, 1],
+  [/还给([一-鿿]{1,4})/, 1],
+  [/([一-鿿]{1,4})还我/, 1],
+  [/欠([一-鿿]{1,4})/, 1],
+  [/([一-鿿]{1,4})欠我/, 1],
+]
+
+function extractCounterparty(text: string): string | undefined {
+  for (const [re, group] of PERSON_PATTERNS) {
+    const m = text.match(re)
+    if (m && m[group] && !NON_PERSON.has(m[group])) return m[group]
+  }
+  return undefined
+}
+
 function detectType(text: string): TransactionType {
   const hasExpDir = EXPENSE_DIR.test(text)
   const hasIncDir = INCOME_DIR.test(text)
-  // 方向型句式优先：如果同时命中，看谁更具体（方向 > 关键词）
   if (hasExpDir && !hasIncDir) return 'expense'
   if (hasIncDir && !hasExpDir) return 'income'
-  // 都命中（如"收到他还给我的钱"）→ 收入优先（钱最终到我手里）
   if (hasExpDir && hasIncDir) return 'income'
-  // 关键词兜底
   if (EXPENSE_KW.test(text)) return 'expense'
   if (INCOME_KW.test(text)) return 'income'
   return 'expense'
@@ -225,8 +264,13 @@ export function parseExpense(rawText: string, now = new Date()): ParseResult {
   const location = extractLocation(text) ?? (merchant ? undefined : undefined)
 
   const foodHits = FOOD_DB.filter((f) => f.match.some((k) => lower.includes(k.toLowerCase())))
-  const txType = detectType(text)
-  const category: CategoryId = txType === 'income' ? 'income' : classify(lower, foodHits.length > 0)
+
+  const debt = detectDebt(text)
+  const txType = debt ? debt.type : detectType(text)
+  const counterparty = debt ? extractCounterparty(text) : undefined
+  const isDebt = debt?.isDebt ?? false
+
+  const category: CategoryId = txType === 'income' ? 'income' : isDebt ? 'social' : classify(lower, foodHits.length > 0)
 
   const items = dedupe(foodHits.map((f) => f.name))
   const title = buildTitle({ text: lower, category, items, merchant })
@@ -240,7 +284,7 @@ export function parseExpense(rawText: string, now = new Date()): ParseResult {
   if (items.length || merchant) confidence += 0.1
   confidence = Math.min(1, confidence)
 
-  return { type: txType, amount, category, title, items, merchant, location, occurredAt: time, meal, health, confidence }
+  return { type: txType, amount, category, title, items, merchant, location, occurredAt: time, meal, health, confidence, counterparty, isDebt: isDebt || undefined }
 }
 
 // ---------- 金额 ----------

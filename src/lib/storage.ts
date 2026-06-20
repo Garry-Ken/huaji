@@ -1,4 +1,4 @@
-import type { Expense, InputSource, ParseResult } from '../types'
+import type { AssetAccount, Expense, InputSource, Ledger, ParseResult } from '../types'
 
 const STORAGE_KEY = 'huaji.expenses.v1'
 const SEED_FLAG = 'huaji.seeded.v1'
@@ -102,7 +102,7 @@ export function importFromJSON(file: File): Promise<Expense[]> {
 }
 
 /** 由解析草稿生成正式记录 */
-export function makeExpense(parse: ParseResult, rawText: string, source: InputSource): Expense {
+export function makeExpense(parse: ParseResult, rawText: string, source: InputSource, ledgerId?: string): Expense {
   const now = Date.now()
   return {
     id: uid(),
@@ -119,9 +119,44 @@ export function makeExpense(parse: ParseResult, rawText: string, source: InputSo
     rawText,
     meal: parse.meal,
     health: parse.health,
+    ...(ledgerId && ledgerId !== 'default' ? { ledgerId } : {}),
+    ...(parse.counterparty ? { counterparty: parse.counterparty, isDebt: true } : {}),
   }
 }
 
 export function sortByTime(list: Expense[]): Expense[] {
   return [...list].sort((a, b) => b.occurredAt - a.occurredAt)
+}
+
+// ---------- 账本 ----------
+const LEDGER_KEY = 'huaji.ledgers.v1'
+export const DEFAULT_LEDGER: Ledger = { id: 'default', name: '日常', emoji: '📒', createdAt: 0 }
+
+export function loadLedgers(): Ledger[] {
+  try {
+    const raw = localStorage.getItem(LEDGER_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr : []
+  } catch { return [] }
+}
+
+export function persistLedgers(list: Ledger[]): void {
+  try { localStorage.setItem(LEDGER_KEY, JSON.stringify(list)) } catch { /* ignore */ }
+}
+
+// ---------- 资产账户 ----------
+const ACCOUNT_KEY = 'huaji.accounts.v1'
+
+export function loadAccounts(): AssetAccount[] {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr : []
+  } catch { return [] }
+}
+
+export function persistAccounts(list: AssetAccount[]): void {
+  try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify(list)) } catch { /* ignore */ }
 }

@@ -49,11 +49,13 @@ export function Bars({
   height = 150,
   formatValue,
   highlightIndex,
+  color,
 }: {
   data: { label: string; value: number; color?: string }[]
   height?: number
   formatValue?: (v: number) => string
   highlightIndex?: number
+  color?: string
 }) {
   const max = Math.max(1, ...data.map((d) => d.value))
   const n = data.length
@@ -75,7 +77,7 @@ export function Bars({
                 className="w-full rounded-t-[5px] transition-all duration-300"
                 style={{
                   height: h,
-                  background: d.color ?? (active ? '#0a84ff' : 'rgba(10,132,255,0.55)'),
+                  background: d.color ?? (active ? (color ?? '#0a84ff') : (color ? color + '8c' : 'rgba(10,132,255,0.55)')),
                   opacity: d.value > 0 ? 1 : 0.4,
                 }}
                 title={`${d.label}: ${formatValue ? formatValue(d.value) : d.value}`}

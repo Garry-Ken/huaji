@@ -132,9 +132,11 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) 
                 )}
               </div>
               <CategoryTag id={preview.category} />
+              {preview.isDebt && <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${preview.type === 'expense' ? 'bg-[#ff9f0a]/15 text-[#ff9f0a]' : 'bg-[#30d158]/15 text-[#30d158]'}`}>{preview.type === 'expense' ? '借出' : '借入'}</span>}
             </div>
             <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap mt-2 text-[12px] text-[#636366] dark:text-[#aeaeb2]">
               <span className="inline-flex items-center gap-1"><ClockIcon size={13} />{relativeDay(preview.occurredAt)} {timeShort(preview.occurredAt)}</span>
+              {preview.counterparty && <span className="inline-flex items-center gap-1">👤 {preview.counterparty}</span>}
               {preview.location && <span className="inline-flex items-center gap-1"><MapPinIcon size={13} />{preview.location}</span>}
               {preview.merchant && <span>· {preview.merchant}</span>}
               {preview.meal && <MealTag meal={preview.meal} />}

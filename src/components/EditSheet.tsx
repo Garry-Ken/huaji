@@ -28,6 +28,8 @@ export function EditSheet({
   const [when, setWhen] = useState(toLocalInput(expense.occurredAt))
   const [location, setLocation] = useState(expense.location ?? '')
   const [note, setNote] = useState(expense.note ?? '')
+  const [isDebt, setIsDebt] = useState(expense.isDebt ?? false)
+  const [counterparty, setCounterparty] = useState(expense.counterparty ?? '')
 
   const save = () => {
     const amt = parseFloat(amount) || 0
@@ -41,12 +43,14 @@ export function EditSheet({
       type: txType,
       amount: amt,
       title: title.trim() || expense.rawText.slice(0, 12),
-      category: txType === 'income' ? 'income' : category,
+      category: txType === 'income' ? 'income' : isDebt ? 'social' : category,
       occurredAt,
       location: location.trim() || undefined,
       note: note.trim() || undefined,
       health,
       meal: isFood ? expense.meal : undefined,
+      isDebt: isDebt || undefined,
+      counterparty: isDebt && counterparty.trim() ? counterparty.trim() : undefined,
     })
   }
 
@@ -59,11 +63,23 @@ export function EditSheet({
           <button onClick={onClose} className="btn-ghost !p-2 !rounded-full"><XIcon size={18} /></button>
         </div>
 
-        {/* 收/支 */}
-        <div className="seg w-full mb-4">
-          <button onClick={() => { setTxType('expense'); if (category === 'income') setCategory('other') }} className={`seg-item flex-1 ${txType === 'expense' ? 'seg-item-active' : ''}`}>支出</button>
-          <button onClick={() => { setTxType('income'); setCategory('income') }} className={`seg-item flex-1 ${txType === 'income' ? 'seg-item-active' : ''}`}>收入</button>
+        {/* 收/支/借贷 */}
+        <div className="seg w-full mb-3">
+          <button onClick={() => { setTxType('expense'); setIsDebt(false); if (category === 'income') setCategory('other') }} className={`seg-item flex-1 ${txType === 'expense' && !isDebt ? 'seg-item-active' : ''}`}>支出</button>
+          <button onClick={() => { setTxType('income'); setIsDebt(false); setCategory('income') }} className={`seg-item flex-1 ${txType === 'income' && !isDebt ? 'seg-item-active' : ''}`}>收入</button>
+          <button onClick={() => { setIsDebt(true); setCategory('social') }} className={`seg-item flex-1 ${isDebt ? 'seg-item-active' : ''}`}>借贷</button>
         </div>
+
+        {isDebt && (
+          <div className="mb-4 space-y-2">
+            <div className="seg w-full">
+              <button onClick={() => setTxType('expense')} className={`seg-item flex-1 ${txType === 'expense' ? 'seg-item-active' : ''}`}>借出</button>
+              <button onClick={() => setTxType('income')} className={`seg-item flex-1 ${txType === 'income' ? 'seg-item-active' : ''}`}>借入 / 还款</button>
+            </div>
+            <input value={counterparty} onChange={e => setCounterparty(e.target.value)} placeholder="交易对方（如 小王）"
+              className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3 py-2.5 text-[14px] outline-none" maxLength={10} />
+          </div>
+        )}
 
         {/* 金额 */}
         <label className="block text-[12px] text-[#86868b] mb-1">金额</label>
