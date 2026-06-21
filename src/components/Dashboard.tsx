@@ -37,7 +37,8 @@ export function Dashboard({ expenses, onGotoHealth, budget, onSettleDebt }: { ex
 
   const view = useMemo(() => {
     const { start, end } = periodRange(kind, anchor)
-    const inRange = expenses.filter((e) => e.occurredAt >= start && e.occurredAt < end)
+    // 借贷(借出/借入)不计入收支统计，只是资金往来
+    const inRange = expenses.filter((e) => e.occurredAt >= start && e.occurredAt < end && !e.isDebt)
     const expenseItems = inRange.filter(e => e.type !== 'income')
     const incomeItems = inRange.filter(e => e.type === 'income')
     const totalExpense = expenseItems.reduce((s, e) => s + e.amount, 0)
@@ -45,7 +46,7 @@ export function Dashboard({ expenses, onGotoHealth, budget, onSettleDebt }: { ex
 
     const prev = periodRange(kind, shift(kind, anchor, -1).getTime())
     const prevExpense = expenses
-      .filter((e) => e.occurredAt >= prev.start && e.occurredAt < prev.end && e.type !== 'income')
+      .filter((e) => e.occurredAt >= prev.start && e.occurredAt < prev.end && e.type !== 'income' && !e.isDebt)
       .reduce((s, e) => s + e.amount, 0)
 
     const byCat = new Map<string, number>()
@@ -67,7 +68,7 @@ export function Dashboard({ expenses, onGotoHealth, budget, onSettleDebt }: { ex
     const highlightIndex = buckets.findIndex((b) => now >= b.start && now < b.end)
 
     const prevIncome = expenses
-      .filter((e) => e.occurredAt >= prev.start && e.occurredAt < prev.end && e.type === 'income')
+      .filter((e) => e.occurredAt >= prev.start && e.occurredAt < prev.end && e.type === 'income' && !e.isDebt)
       .reduce((s, e) => s + e.amount, 0)
 
     const incomeBySource = new Map<string, number>()

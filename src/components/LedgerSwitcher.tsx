@@ -39,8 +39,10 @@ export function LedgerSwitcher({ ledgers, activeLedgerId, defaultLedger, expense
       const lid = e.ledgerId || 'default'
       const s = map.get(lid) ?? { income: 0, expense: 0, count: 0 }
       s.count++
-      if (e.type === 'income') s.income += e.amount
-      else s.expense += e.amount
+      if (!e.isDebt) { // 借贷不计入收支汇总
+        if (e.type === 'income') s.income += e.amount
+        else s.expense += e.amount
+      }
       map.set(lid, s)
     }
     return map

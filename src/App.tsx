@@ -200,13 +200,13 @@ export default function App() {
 
   const total30 = useMemo(() => {
     const since = Date.now() - 30 * 86400000
-    return expenses.filter((e) => e.occurredAt >= since && e.type !== 'income').reduce((s, e) => s + e.amount, 0)
+    return expenses.filter((e) => e.occurredAt >= since && e.type !== 'income' && !e.isDebt).reduce((s, e) => s + e.amount, 0)
   }, [expenses])
 
   const monthExpense = useMemo(() => {
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-    return expenses.filter(e => e.occurredAt >= start && e.type !== 'income').reduce((s, e) => s + e.amount, 0)
+    return expenses.filter(e => e.occurredAt >= start && e.type !== 'income' && !e.isDebt).reduce((s, e) => s + e.amount, 0)
   }, [expenses])
 
   const budget = loadBudget()
@@ -283,8 +283,8 @@ export default function App() {
       {activeLedgerId !== 'default' && (() => {
         const al = ledgers.find(l => l.id === activeLedgerId)
         if (!al) return null
-        const inc = filteredExpenses.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
-        const exp = filteredExpenses.filter(e => e.type !== 'income').reduce((s, e) => s + e.amount, 0)
+        const inc = filteredExpenses.filter(e => e.type === 'income' && !e.isDebt).reduce((s, e) => s + e.amount, 0)
+        const exp = filteredExpenses.filter(e => e.type !== 'income' && !e.isDebt).reduce((s, e) => s + e.amount, 0)
         return (
           <div className="w-full max-w-2xl mx-auto px-4">
             <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[#f5f5f7] dark:bg-[#1c1c1e] text-[12px] text-[#86868b]"

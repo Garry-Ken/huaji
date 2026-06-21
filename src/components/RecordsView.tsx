@@ -248,8 +248,8 @@ export function RecordsView({
             </div>
           )}
           {groups.map(([day, items]) => {
-            const expenseTotal = items.filter(e => e.type !== 'income').reduce((s, e) => s + e.amount, 0)
-            const incomeTotal = items.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
+            const expenseTotal = items.filter(e => e.type !== 'income' && !e.isDebt).reduce((s, e) => s + e.amount, 0)
+            const incomeTotal = items.filter(e => e.type === 'income' && !e.isDebt).reduce((s, e) => s + e.amount, 0)
             const groupAllSelected = selecting && items.every(e => selected.has(e.id))
             return (
               <div key={day} className="card overflow-hidden">
