@@ -66,3 +66,30 @@ export function invalidateAiConfig() {
   cache = null
   cachedAt = 0
 }
+
+// ---------- 通过 Edge Function 代理调用 AI（key 不下发到客户端）----------
+export interface AiProxyPayload {
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
+  temperature?: number
+  max_tokens?: number
+  model?: string
+}
+
+export interface AiProxyResult {
+  content: string
+  tokens: number
+}
+
+/** 调用服务端 AI 代理。返回 {content, tokens} 或 {error}。 */
+export async function callAiProxy(payload: AiProxyPayload): Promise<AiProxyResult | { error: string }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('ai-proxy', { body: payload })
+    if (error) return { error: '网络错误，请稍后重试' }
+    if (data?.error) return { error: data.error as string }
+    const content = data?.choices?.[0]?.message?.content?.trim()
+    if (!content) return { error: '未收到回复' }
+    return { content, tokens: data?.usage?.total_tokens ?? 0 }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : '网络错误' }
+  }
+}

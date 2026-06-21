@@ -216,9 +216,12 @@ create table if not exists public.app_config (
 
 alter table public.app_config enable row level security;
 
+-- 配置只有店主可读（AI key 等敏感项不再下发给普通用户；
+-- AI 调用走 ai-proxy Edge Function，由服务端 service_role 读取，绕过 RLS）
 drop policy if exists "authenticated read config" on public.app_config;
-create policy "authenticated read config" on public.app_config
-  for select to authenticated using (true);
+drop policy if exists "admin read config" on public.app_config;
+create policy "admin read config" on public.app_config
+  for select to authenticated using (public.is_admin());
 
 drop policy if exists "admins write config" on public.app_config;
 create policy "admins write config" on public.app_config
