@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { AssetAccount, Expense } from '../types'
 import { useEntitlement, TIER_INFO, type Plan, type Tier } from '../lib/entitlement'
 import { categoryMeta } from '../lib/categories'
 import { exportToJSON, importFromJSON, loadBudget, saveBudget, persist, sortByTime } from '../lib/storage'
 import { pushToCloud, pullFromCloud, mergeRecords, getLastSyncDisplay } from '../lib/sync'
+import { loadAiConfig, saveAiConfig, AI_DEFAULTS } from '../lib/aiConfig'
 import { CrownIcon, LockIcon, CheckIcon, DownloadIcon, CloudIcon, SparkIcon, ChevronRight, UserIcon, UploadIcon, ShieldIcon, TargetIcon, RefreshIcon, InfoIcon, TrashIcon } from './icons'
 import { AssetsCard } from './AssetsCard'
 import { RecoverSheet } from './RecoverSheet'
@@ -15,7 +16,7 @@ const TIER_GRADIENTS: Record<string, string> = {
   ultra: 'linear-gradient(135deg,#af52de,#ff375f)',
 }
 
-const APP_VERSION = '0.4.5'
+const APP_VERSION = '0.4.6'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
@@ -349,8 +350,68 @@ function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; on
       </div>
       {grantMsg && <p className="text-[12px] text-[#86868b] mt-2">{grantMsg}</p>}
 
+      {/* AI 接入配置 */}
+      <AiConfigPanel onToast={onToast} />
+
       {/* 清理数据 */}
       <button onClick={onClearData} className="btn-ghost w-full justify-center text-[13px] mt-4 !text-[#ff375f]">清空全部记录（本机）</button>
+    </div>
+  )
+}
+
+function AiConfigPanel({ onToast }: { onToast: (m: string) => void }) {
+  const [apiKey, setApiKey] = useState('')
+  const [baseURL, setBaseURL] = useState('')
+  const [model, setModel] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [show, setShow] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    loadAiConfig(true).then((c) => {
+      setApiKey(c.apiKey)
+      setBaseURL(c.baseURL)
+      setModel(c.model)
+      setLoaded(true)
+    })
+  }, [])
+
+  const save = async () => {
+    if (busy) return
+    setBusy(true)
+    const r = await saveAiConfig({ apiKey: apiKey.trim(), baseURL: baseURL.trim() || AI_DEFAULTS.baseURL, model: model.trim() || AI_DEFAULTS.model })
+    setBusy(false)
+    onToast(r.msg)
+  }
+
+  const masked = apiKey && !show ? apiKey.slice(0, 6) + '••••••' + apiKey.slice(-4) : apiKey
+  const inputCls = 'w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3 py-2.5 text-[13px] outline-none mb-2 font-mono'
+
+  return (
+    <div className="mt-5 pt-4 border-t border-[#00000010] dark:border-[#ffffff14]">
+      <div className="text-[12px] text-[#86868b] mb-2">🤖 AI 接入配置（改完即时生效，无需改代码）</div>
+
+      <label className="block text-[11px] text-[#86868b] mb-1">API Key</label>
+      <div className="relative">
+        <input
+          value={show ? apiKey : masked}
+          onChange={(e) => { setApiKey(e.target.value); setShow(true) }}
+          onFocus={() => setShow(true)}
+          placeholder={loaded ? 'sk-...' : '加载中…'}
+          className={inputCls + ' pr-14'}
+          spellCheck={false}
+        />
+        <button onClick={() => setShow((s) => !s)} className="absolute right-3 top-2.5 text-[12px] text-[#0a84ff]">{show ? '隐藏' : '显示'}</button>
+      </div>
+
+      <label className="block text-[11px] text-[#86868b] mb-1">接口地址 Base URL</label>
+      <input value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder={AI_DEFAULTS.baseURL} className={inputCls} spellCheck={false} />
+
+      <label className="block text-[11px] text-[#86868b] mb-1">模型 Model</label>
+      <input value={model} onChange={(e) => setModel(e.target.value)} placeholder={AI_DEFAULTS.model} className={inputCls} spellCheck={false} />
+
+      <button onClick={save} disabled={busy || !loaded} className="btn-primary w-full justify-center text-[13px] mt-1 disabled:opacity-50">{busy ? '保存中…' : '保存 AI 配置'}</button>
+      <p className="text-[11px] text-[#86868b] mt-2 leading-relaxed">密钥存于 Supabase，仅店主可写；不会出现在代码或前端打包里。兼容 OpenAI 格式接口（如硅基流动、DeepSeek、Kimi 等），换服务商改这三项即可。</p>
     </div>
   )
 }

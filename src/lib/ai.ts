@@ -1,18 +1,6 @@
-import { supabase } from './supabase'
 import type { ParseResult } from '../types'
 import type { CategoryId } from '../types'
-
-const API_URL = 'https://api.xiaomimimo.com/v1/chat/completions'
-const MODEL = 'mimo-v2-flash'
-
-let cachedKey: string | null = null
-
-async function getApiKey(): Promise<string | null> {
-  if (cachedKey) return cachedKey
-  const { data } = await supabase.from('app_config').select('value').eq('key', 'ai_api_key').single()
-  if (data?.value) cachedKey = data.value
-  return cachedKey
-}
+import { loadAiConfig } from './aiConfig'
 
 const VALID_CATEGORIES = new Set<string>([
   'food', 'transport', 'shopping', 'entertainment', 'housing',
@@ -30,19 +18,19 @@ const SYSTEM_PROMPT = `你是花迹记账App的AI助手。用户会输入一段�
 仅返回JSON，不要其他文字。`
 
 export async function aiEnhanceParse(rawText: string, localResults: ParseResult[]): Promise<ParseResult[] | null> {
-  const key = await getApiKey()
-  if (!key) return null
+  const { apiKey, baseURL, model } = await loadAiConfig()
+  if (!apiKey) return null
 
   const localSummary = localResults.map(r => ({
     title: r.title, amount: r.amount, category: r.category, type: r.type,
   }))
 
   try {
-    const res = await fetch(API_URL, {
+    const res = await fetch(baseURL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: MODEL,
+        model,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: `原文：${rawText}\n\n本地解析结果：${JSON.stringify(localSummary)}` },

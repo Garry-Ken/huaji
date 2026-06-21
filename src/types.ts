@@ -38,6 +38,7 @@ export interface Expense {
   category: CategoryId
   title: string // 简短标题，如 "麻辣烫"
   items: string[] // 明细项（饮食类尤其有用）
+  quantity?: string // 容量/数量，如 "一桶5升" "一瓶"（单品时列表小字展示）
   merchant?: string // 商家 / 品牌
   location?: string // 地点
   note?: string
@@ -59,6 +60,7 @@ export interface ParseResult {
   category: CategoryId
   title: string
   items: string[]
+  quantity?: string
   merchant?: string
   location?: string
   occurredAt: number

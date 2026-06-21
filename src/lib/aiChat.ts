@@ -1,18 +1,6 @@
-import { supabase } from './supabase'
 import type { Expense } from '../types'
 import { trackTokens } from './tokenTracker'
-
-const API_URL = 'https://api.xiaomimimo.com/v1/chat/completions'
-const MODEL = 'mimo-v2-flash'
-
-let cachedKey: string | null = null
-
-async function getApiKey(): Promise<string | null> {
-  if (cachedKey) return cachedKey
-  const { data } = await supabase.from('app_config').select('value').eq('key', 'ai_api_key').single()
-  if (data?.value) cachedKey = data.value
-  return cachedKey
-}
+import { loadAiConfig } from './aiConfig'
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
@@ -49,8 +37,8 @@ export async function sendChatMessage(
   messages: ChatMessage[],
   dietContext: string,
 ): Promise<{ content: string; tokens: number } | { error: string }> {
-  const key = await getApiKey()
-  if (!key) return { error: 'AI 服务未配置' }
+  const { apiKey, baseURL, model } = await loadAiConfig()
+  if (!apiKey) return { error: 'AI 服务未配置' }
 
   const fullMessages: ChatMessage[] = [
     { role: 'system', content: `${SYSTEM_PROMPT}\n\n用户饮食数据：\n${dietContext}` },
@@ -58,11 +46,11 @@ export async function sendChatMessage(
   ]
 
   try {
-    const res = await fetch(API_URL, {
+    const res = await fetch(baseURL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: MODEL,
+        model,
         messages: fullMessages,
         temperature: 0.7,
         max_tokens: 1024,

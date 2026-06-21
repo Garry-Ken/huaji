@@ -52,15 +52,16 @@ function Row({ e, onClick, selecting, selected, onToggle, onLongPress }: {
       )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          {e.category === 'food' && e.items.length > 0 ? (
+          {e.category === 'food' && e.items.length > 1 ? (
             <span className="font-medium text-[15px] truncate">今日美食</span>
           ) : (
             <span className="font-medium text-[15px] truncate">{e.title || m.label}</span>
           )}
+          {e.quantity && <span className="text-[12px] text-[#86868b] shrink-0">{e.quantity}</span>}
           {e.meal && <MealTag meal={e.meal} />}
           {e.isDebt && <span className={`text-[10px] rounded-full px-1.5 py-0.5 font-medium ${e.type === 'expense' ? 'bg-[#ff9f0a]/15 text-[#ff9f0a]' : 'bg-[#30d158]/15 text-[#30d158]'}`}>{e.type === 'expense' ? '借出' : '借入'}</span>}
         </div>
-        {e.category === 'food' && e.items.length > 0 && (
+        {e.category === 'food' && e.items.length > 1 && (
           <div className="flex flex-wrap items-center gap-1 mt-0.5">
             {e.items.slice(0, 8).map((item, i) => (
               <span key={i} className="text-[11px] px-1.5 py-0.5 rounded-md bg-[#ff9f0a]/10 text-[#ff9f0a] dark:text-[#ffd60a]">{item}</span>

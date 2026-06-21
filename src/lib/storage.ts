@@ -111,6 +111,7 @@ export function makeExpense(parse: ParseResult, rawText: string, source: InputSo
     category: parse.category,
     title: parse.title || rawText.slice(0, 12),
     items: parse.items,
+    ...(parse.quantity ? { quantity: parse.quantity } : {}),
     merchant: parse.merchant,
     location: parse.location,
     occurredAt: parse.occurredAt || now,

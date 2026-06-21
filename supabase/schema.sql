@@ -227,7 +227,19 @@ create policy "admins write config" on public.app_config
 
 grant select on public.app_config to authenticated;
 
+-- 店主：在 web 端写入 AI 配置（ai_api_key / ai_base_url / ai_model 等）
+create or replace function public.admin_set_config(p_key text, p_value text)
+  returns void
+  language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'not authorized'; end if;
+  insert into public.app_config(key, value) values (p_key, p_value)
+  on conflict (key) do update set value = excluded.value;
+end $$;
+
+grant execute on function public.admin_set_config(text, text) to authenticated;
+
 -- ============================================================================
--- 让 PostgREST 立即重新加载函数签名（新增 p_tier 参数后需要）
+-- 让 PostgREST 立即重新加载函数签名（新增 p_tier / admin_set_config 后需要）
 -- ============================================================================
 notify pgrst, 'reload schema';
