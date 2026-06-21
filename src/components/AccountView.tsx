@@ -6,6 +6,7 @@ import { categoryMeta } from '../lib/categories'
 import { exportToJSON, importFromJSON, loadBudget, saveBudget, persist, sortByTime } from '../lib/storage'
 import { pushToCloud, pullFromCloud, mergeRecords, getLastSyncDisplay } from '../lib/sync'
 import { loadAiConfig, saveAiConfig, AI_DEFAULTS } from '../lib/aiConfig'
+import { AI_PROVIDERS, matchProvider } from '../lib/aiProviders'
 import { CrownIcon, LockIcon, CheckIcon, DownloadIcon, CloudIcon, SparkIcon, ChevronRight, UserIcon, UploadIcon, ShieldIcon, TargetIcon, RefreshIcon, InfoIcon, TrashIcon } from './icons'
 import { AssetsCard } from './AssetsCard'
 import { RecoverSheet } from './RecoverSheet'
@@ -16,7 +17,7 @@ const TIER_GRADIENTS: Record<string, string> = {
   ultra: 'linear-gradient(135deg,#af52de,#ff375f)',
 }
 
-const APP_VERSION = '0.4.7'
+const APP_VERSION = '0.4.8'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
@@ -363,8 +364,10 @@ function AiConfigPanel({ onToast }: { onToast: (m: string) => void }) {
   const [apiKey, setApiKey] = useState('')
   const [baseURL, setBaseURL] = useState('')
   const [model, setModel] = useState('')
+  const [provider, setProvider] = useState('custom')
   const [loaded, setLoaded] = useState(false)
   const [show, setShow] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -372,9 +375,20 @@ function AiConfigPanel({ onToast }: { onToast: (m: string) => void }) {
       setApiKey(c.apiKey)
       setBaseURL(c.baseURL)
       setModel(c.model)
+      setProvider(matchProvider(c.baseURL))
       setLoaded(true)
     })
   }, [])
+
+  const curProvider = AI_PROVIDERS.find((p) => p.id === provider)
+
+  const pickProvider = (p: typeof AI_PROVIDERS[number]) => {
+    setProvider(p.id)
+    if (p.id !== 'custom') {
+      setBaseURL(p.baseURL)
+      if (p.models.length && !p.models.includes(model)) setModel(p.models[0])
+    }
+  }
 
   const save = async () => {
     if (busy) return
@@ -389,29 +403,67 @@ function AiConfigPanel({ onToast }: { onToast: (m: string) => void }) {
 
   return (
     <div className="mt-5 pt-4 border-t border-[#00000010] dark:border-[#ffffff14]">
-      <div className="text-[12px] text-[#86868b] mb-2">🤖 AI 接入配置（改完即时生效，无需改代码）</div>
+      <div className="text-[12px] text-[#86868b] mb-2">🤖 AI 接入配置（选服务商→填 Key→选模型，改完即时生效）</div>
 
-      <label className="block text-[11px] text-[#86868b] mb-1">API Key</label>
+      {/* 服务商预设 */}
+      <label className="block text-[11px] text-[#86868b] mb-1.5">服务商</label>
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {AI_PROVIDERS.map((p) => {
+          const active = p.id === provider
+          return (
+            <button
+              key={p.id}
+              onClick={() => pickProvider(p)}
+              className={`text-[12px] px-2.5 py-1 rounded-full border transition-colors ${active ? 'bg-[#0a84ff] text-white border-[#0a84ff]' : 'bg-transparent text-[#636366] dark:text-[#aeaeb2] border-[#d2d2d7] dark:border-[#48484a]'}`}
+            >
+              {p.name}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* API Key */}
+      <div className="flex items-center justify-between mb-1">
+        <label className="text-[11px] text-[#86868b]">API Key{curProvider?.keyHint ? ` · 格式 ${curProvider.keyHint}` : ''}</label>
+        {curProvider?.site && <a href={curProvider.site} target="_blank" rel="noreferrer" className="text-[11px] text-[#0a84ff]">获取 Key ↗</a>}
+      </div>
       <div className="relative">
         <input
           value={show ? apiKey : masked}
           onChange={(e) => { setApiKey(e.target.value); setShow(true) }}
           onFocus={() => setShow(true)}
-          placeholder={loaded ? 'sk-...' : '加载中…'}
+          placeholder={loaded ? (curProvider?.keyHint ?? 'sk-...') : '加载中…'}
           className={inputCls + ' pr-14'}
           spellCheck={false}
         />
         <button onClick={() => setShow((s) => !s)} className="absolute right-3 top-2.5 text-[12px] text-[#0a84ff]">{show ? '隐藏' : '显示'}</button>
       </div>
 
-      <label className="block text-[11px] text-[#86868b] mb-1">接口地址 Base URL</label>
-      <input value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder={AI_DEFAULTS.baseURL} className={inputCls} spellCheck={false} />
-
+      {/* 模型 */}
       <label className="block text-[11px] text-[#86868b] mb-1">模型 Model</label>
+      {curProvider && curProvider.models.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {curProvider.models.map((mm) => (
+            <button
+              key={mm}
+              onClick={() => setModel(mm)}
+              className={`text-[12px] px-2.5 py-1 rounded-full border transition-colors font-mono ${model === mm ? 'bg-[#30d158]/15 text-[#30d158] border-[#30d158]/40' : 'bg-transparent text-[#636366] dark:text-[#aeaeb2] border-[#d2d2d7] dark:border-[#48484a]'}`}
+            >
+              {mm}
+            </button>
+          ))}
+        </div>
+      )}
       <input value={model} onChange={(e) => setModel(e.target.value)} placeholder={AI_DEFAULTS.model} className={inputCls} spellCheck={false} />
 
-      <button onClick={save} disabled={busy || !loaded} className="btn-primary w-full justify-center text-[13px] mt-1 disabled:opacity-50">{busy ? '保存中…' : '保存 AI 配置'}</button>
-      <p className="text-[11px] text-[#86868b] mt-2 leading-relaxed">密钥存于 Supabase，仅店主可写；不会出现在代码或前端打包里。兼容 OpenAI 格式接口（如硅基流动、DeepSeek、Kimi 等），换服务商改这三项即可。</p>
+      {/* 高级：接口地址 */}
+      <button onClick={() => setAdvanced((a) => !a)} className="text-[11px] text-[#0a84ff] mb-1">{advanced ? '收起' : '高级'} · 接口地址</button>
+      {advanced && (
+        <input value={baseURL} onChange={(e) => { setBaseURL(e.target.value); setProvider(matchProvider(e.target.value)) }} placeholder={AI_DEFAULTS.baseURL} className={inputCls} spellCheck={false} />
+      )}
+
+      <button onClick={save} disabled={busy || !loaded} className="btn-primary w-full justify-center text-[13px] mt-2 disabled:opacity-50">{busy ? '保存中…' : '保存 AI 配置'}</button>
+      <p className="text-[11px] text-[#86868b] mt-2 leading-relaxed">密钥存于 Supabase，仅店主可写，不进代码或前端打包。内置 {AI_PROVIDERS.length - 1} 家兼容 OpenAI 格式的服务商，换厂商点一下即可；模型可在预设里选或自己填。</p>
     </div>
   )
 }
