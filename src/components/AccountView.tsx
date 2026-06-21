@@ -17,7 +17,7 @@ const TIER_GRADIENTS: Record<string, string> = {
   ultra: 'linear-gradient(135deg,#af52de,#ff375f)',
 }
 
-const APP_VERSION = '0.4.12'
+const APP_VERSION = '0.4.13'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
