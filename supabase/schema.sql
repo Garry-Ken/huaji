@@ -9,7 +9,7 @@
 -- 1) 权益表：每个用户一行
 create table if not exists public.entitlements (
   user_id    uuid primary key references auth.users(id) on delete cascade,
-  plan       text check (plan in ('monthly','quarterly','annual')),
+  plan       text check (plan in ('monthly','quarterly','annual','lifetime')),
   started_at timestamptz,
   expires_at timestamptz,
   source     text,                       -- redeem | grant
@@ -19,7 +19,7 @@ create table if not exists public.entitlements (
 -- 2) 兑换码表：服务端铸造、原子核销，防跨设备重复使用
 create table if not exists public.redeem_codes (
   code       text primary key,
-  plan       text not null check (plan in ('monthly','quarterly','annual')),
+  plan       text not null check (plan in ('monthly','quarterly','annual','lifetime')),
   created_at timestamptz not null default now(),
   used_by    uuid references auth.users(id),
   used_at    timestamptz
@@ -54,7 +54,7 @@ create policy "read own entitlement" on public.entitlements
 -- 套餐 → 月数
 create or replace function public.plan_months(p_plan text) returns int
   language sql immutable as $$
-  select case p_plan when 'monthly' then 1 when 'quarterly' then 3 when 'annual' then 12 else 0 end
+  select case p_plan when 'monthly' then 1 when 'quarterly' then 3 when 'annual' then 12 when 'lifetime' then 1200 else 0 end
 $$;
 
 -- 档位是否合法

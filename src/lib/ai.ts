@@ -1,6 +1,6 @@
 import type { ParseResult } from '../types'
 import type { CategoryId } from '../types'
-import { callAiProxy } from './aiConfig'
+import { callAi } from './aiConfig'
 
 const VALID_CATEGORIES = new Set<string>([
   'food', 'transport', 'shopping', 'entertainment', 'housing',
@@ -23,7 +23,7 @@ export async function aiEnhanceParse(rawText: string, localResults: ParseResult[
   }))
 
   try {
-    const res = await callAiProxy({
+    const res = await callAi({
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: `原文：${rawText}\n\n本地解析结果：${JSON.stringify(localSummary)}` },

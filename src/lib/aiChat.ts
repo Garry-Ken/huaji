@@ -1,6 +1,6 @@
 import type { Expense } from '../types'
 import { trackTokens } from './tokenTracker'
-import { callAiProxy } from './aiConfig'
+import { callAi } from './aiConfig'
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
@@ -42,7 +42,7 @@ export async function sendChatMessage(
     ...messages,
   ]
 
-  const res = await callAiProxy({ messages: fullMessages, temperature: 0.7, max_tokens: 1024 })
+  const res = await callAi({ messages: fullMessages, temperature: 0.7, max_tokens: 1024 })
   if ('error' in res) return { error: res.error }
   if (res.tokens > 0) trackTokens(res.tokens)
   return { content: res.content, tokens: res.tokens }

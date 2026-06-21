@@ -102,6 +102,7 @@ export function Paywall({ onResult }: { onResult?: (msg: string) => void }) {
             <button onClick={() => setStep('plans')} className="btn-ghost w-full justify-center text-[13px]">
               已购买 / 用兑换码开通 →
             </button>
+            <p className="text-[11px] text-[#86868b] text-center mt-3 leading-relaxed">💡 想白嫖 AI？到「我的」页填自己的大模型 API key，<br/>AI 智能解析 + 饮食对话全免费，无需会员。</p>
             {neverTrialed && <p className="text-[11px] text-[#86868b] text-center mt-2">{sym}0 试用 · 可随时取消</p>}
           </>
         ) : step === 'plans' ? (
@@ -128,11 +129,11 @@ export function Paywall({ onResult }: { onResult?: (msg: string) => void }) {
                         {p.badge && <span className="pill !py-0.5 !px-2 text-[10px] font-semibold text-white" style={{ background: 'linear-gradient(135deg,#ff9f0a,#ff375f)' }}>{p.badge}</span>}
                         {p.saveLabel && <span className="text-[11px] text-[#30d158] font-medium">{p.saveLabel}</span>}
                       </div>
-                      <div className="text-[12px] text-[#86868b] mt-0.5">{formatPrice(region, p.perMonth)}/月</div>
+                      <div className="text-[12px] text-[#86868b] mt-0.5">{p.id === 'lifetime' ? '一次买断 · 永久有效' : `${formatPrice(region, p.perMonth)}/月`}</div>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="font-semibold text-[16px]">{formatPrice(region, p.total)}</div>
-                      <div className="text-[11px] text-[#86868b]">{p.months === 1 ? '每月' : p.months === 3 ? '每季' : '每年'}</div>
+                      <div className="text-[11px] text-[#86868b]">{p.id === 'lifetime' ? '永久' : '每年'}</div>
                     </div>
                   </button>
                 )

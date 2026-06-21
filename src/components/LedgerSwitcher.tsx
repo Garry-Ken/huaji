@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import type { Ledger, Expense } from '../types'
 import { uid } from '../lib/storage'
-import { useEntitlement } from '../lib/entitlement'
 import { LEDGER_TEMPLATES, type LedgerTemplate } from '../lib/ledgerTemplates'
 
 interface Props {
@@ -28,7 +27,6 @@ export function LedgerSwitcher({ ledgers, activeLedgerId, defaultLedger, expense
   const [description, setDescription] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<LedgerTemplate | null>(null)
   const [editingLedger, setEditingLedger] = useState<Ledger | null>(null)
-  const { isPlus, openPaywall } = useEntitlement()
 
   const allLedgers = [defaultLedger, ...ledgers]
   const active = allLedgers.find(l => l.id === activeLedgerId) ?? defaultLedger
@@ -51,8 +49,7 @@ export function LedgerSwitcher({ ledgers, activeLedgerId, defaultLedger, expense
   const close = () => { setOpen(false); setStep('list'); setEditingLedger(null) }
 
   const handleAdd = () => {
-    if (!isPlus) { openPaywall('创建多账本是 Plus 功能'); return }
-    setStep('templates')
+    setStep('templates') // 多账本已免费
   }
 
   const pickTemplate = (t: LedgerTemplate) => {
@@ -151,7 +148,7 @@ export function LedgerSwitcher({ ledgers, activeLedgerId, defaultLedger, expense
               </div>
               <div className="px-5 pb-5 pt-2">
                 <button onClick={handleAdd} className="w-full py-3 rounded-xl border border-dashed border-[#00000020] dark:border-[#ffffff20] text-[14px] text-[#0a84ff] font-medium hover:bg-[#0a84ff]/5 transition-colors">
-                  + 新建账本{!isPlus && ' 🔒'}
+                  + 新建账本
                 </button>
               </div>
             </>}

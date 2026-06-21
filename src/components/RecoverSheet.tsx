@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Expense } from '../types'
-import { useEntitlement } from '../lib/entitlement'
-import { checkQuota, useQuota } from '../lib/quota'
 import { pullDeletedFromCloud, restoreFromCloud } from '../lib/sync'
 import { categoryMeta } from '../lib/categories'
 import { yuan } from '../lib/format'
@@ -12,7 +10,6 @@ export function RecoverSheet({ onClose, onRecover, onToast }: {
   onRecover: (records: Expense[]) => void
   onToast: (msg: string) => void
 }) {
-  const { tier } = useEntitlement()
   const [records, setRecords] = useState<Expense[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -38,17 +35,10 @@ export function RecoverSheet({ onClose, onRecover, onToast }: {
 
   const doRecover = async () => {
     if (selected.size === 0 || busy) return
-    if (!tier) return
-    const q = checkQuota('recover', tier)
-    if (!q.allowed) {
-      onToast(`本月恢复次数已用完 (${q.used}/${q.limit})`)
-      return
-    }
     setBusy(true)
     const ids = [...selected]
     const res = await restoreFromCloud(ids)
     if (res.ok) {
-      useQuota('recover')
       const restored = records.filter(r => selected.has(r.id))
       onRecover(restored)
       setRecords(prev => prev.filter(r => !selected.has(r.id)))
@@ -60,8 +50,6 @@ export function RecoverSheet({ onClose, onRecover, onToast }: {
     setBusy(false)
   }
 
-  const quota = tier ? checkQuota('recover', tier) : null
-
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
@@ -72,9 +60,6 @@ export function RecoverSheet({ onClose, onRecover, onToast }: {
           <RefreshIcon size={22} className="text-[#0a84ff]" />
           <h2 className="text-[17px] font-semibold">云端恢复</h2>
         </div>
-        {quota && quota.limit !== Infinity && (
-          <p className="text-[12px] text-[#86868b] mb-3">本月已用 {quota.used}/{quota.limit} 次</p>
-        )}
 
         <div className="flex-1 overflow-y-auto -mx-2 px-2 min-h-0">
           {loading ? (

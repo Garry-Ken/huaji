@@ -18,7 +18,7 @@ interface Msg {
 }
 
 export function AiChatSheet({ expenses, onClose }: { expenses: Expense[]; onClose: () => void }) {
-  const { isUltra, isAdmin, openPaywall } = useEntitlement()
+  const { canDietChat, isAdmin, openPaywall } = useEntitlement()
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -35,8 +35,8 @@ export function AiChatSheet({ expenses, onClose }: { expenses: Expense[]; onClos
   const send = useCallback(async (text: string) => {
     if (!text.trim() || loading) return
 
-    if (!isUltra) {
-      openPaywall('AI 饮食对话是 Ultra 会员专属功能')
+    if (!canDietChat) {
+      openPaywall('AI 饮食对话：升级 Ultra，或在「我的」填自己的 API key 免费用')
       return
     }
     if (!canChat() && !isAdmin) return // 店主不受月度 token 上限
@@ -56,7 +56,7 @@ export function AiChatSheet({ expenses, onClose }: { expenses: Expense[]; onClos
       setMessages(prev => [...prev, { role: 'assistant', content: res.content }])
     }
     setLoading(false)
-  }, [messages, loading, isUltra, isAdmin, openPaywall, dietContext])
+  }, [messages, loading, canDietChat, isAdmin, openPaywall, dietContext])
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#f5f5f7] dark:bg-[#1c1c1e]">

@@ -11,10 +11,10 @@ interface QuotaStore {
   import: number
 }
 
-const LIMITS: Record<Feature, Record<Tier, number>> = {
-  recover: { plus: 5, pro: 10, ultra: Infinity },
-  export:  { plus: 5, pro: 10, ultra: Infinity },
-  import:  { plus: 5, pro: 10, ultra: Infinity },
+// 导入导出按档位限量；云端恢复已免费（recover 不限）
+const LIMITS: Record<'export' | 'import', Record<Tier, number>> = {
+  export:  { pro: 30, ultra: Infinity },
+  import:  { pro: 30, ultra: Infinity },
 }
 
 function currentMonth(): string {
@@ -38,7 +38,9 @@ function save(s: QuotaStore): void {
   try { localStorage.setItem(QUOTA_KEY, JSON.stringify(s)) } catch { /* ignore */ }
 }
 
-export function checkQuota(feature: Feature, tier: Tier): { allowed: boolean; used: number; limit: number } {
+export function checkQuota(feature: Feature, tier?: Tier): { allowed: boolean; used: number; limit: number } {
+  if (feature === 'recover') return { allowed: true, used: 0, limit: Infinity } // 云端恢复免费
+  if (!tier) return { allowed: false, used: 0, limit: 0 }
   const s = load()
   const limit = LIMITS[feature][tier]
   const used = s[feature]

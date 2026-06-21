@@ -5,7 +5,7 @@ import { useEntitlement, TIER_INFO, type Plan, type Tier } from '../lib/entitlem
 import { categoryMeta } from '../lib/categories'
 import { exportToJSON, importFromJSON, loadBudget, saveBudget, persist, sortByTime } from '../lib/storage'
 import { pushToCloud, pullFromCloud, mergeRecords, getLastSyncDisplay } from '../lib/sync'
-import { loadAiConfig, saveAiConfig, AI_DEFAULTS } from '../lib/aiConfig'
+import { loadAiConfig, saveAiConfig, AI_DEFAULTS, loadUserAi, saveUserAi, clearUserAi } from '../lib/aiConfig'
 import { AI_PROVIDERS, matchProvider } from '../lib/aiProviders'
 import { checkUpdate } from '../lib/appUpdate'
 import { CrownIcon, LockIcon, CheckIcon, DownloadIcon, CloudIcon, SparkIcon, ChevronRight, UserIcon, UploadIcon, ShieldIcon, TargetIcon, RefreshIcon, InfoIcon, TrashIcon } from './icons'
@@ -18,7 +18,7 @@ const TIER_GRADIENTS: Record<string, string> = {
   ultra: 'linear-gradient(135deg,#af52de,#ff375f)',
 }
 
-const APP_VERSION = '0.4.18'
+const APP_VERSION = '0.4.19'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
@@ -40,33 +40,33 @@ function downloadCSV(expenses: Expense[]) {
 }
 
 function planLabel(p?: string) {
-  return p === 'monthly' ? '月度' : p === 'quarterly' ? '季度' : p === 'annual' ? '年度' : 'Pro'
+  return p === 'lifetime' ? '永久' : p === 'annual' ? '年付' : '会员'
 }
 
 export function AccountView({ expenses, onToast, onClearData, onReload, accounts, onAccountsChange }: { expenses: Expense[]; onToast: (m: string) => void; onClearData: () => void; onReload: (records: Expense[]) => void; accounts?: AssetAccount[]; onAccountsChange?: (a: AssetAccount[]) => void }) {
   const ent = useEntitlement()
-  const { status, tier, isPlus, isPro, isUltra, daysLeft, aiEnhance, setAiEnhance, openPaywall, user, isAdmin, signOut, openLogin, proPlan, proExpiresAt } = ent
+  const { status, tier, isPro, isUltra, isLifetime, hasOwnAiKey, canEnhance, daysLeft, aiEnhance, setAiEnhance, openPaywall, user, isAdmin, signOut, openLogin, proPlan, proExpiresAt } = ent
   const fileRef = useRef<HTMLInputElement>(null)
   const [syncing, setSyncing] = useState(false)
   const [budgetOpen, setBudgetOpen] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
   const [recoverOpen, setRecoverOpen] = useState(false)
 
-  const tierName = tier === 'ultra' ? 'Ultra' : tier === 'pro' ? 'Pro' : tier === 'plus' ? 'Plus' : null
+  const tierName = tier === 'ultra' ? 'Ultra' : tier === 'pro' ? 'Pro' : null
   const statusMeta =
     isAdmin
       ? { title: '店主 · Ultra', sub: '最高权限 · 无限使用', grad: TIER_GRADIENTS.ultra }
     : tier
-      ? { title: `${tierName} 会员`, sub: proExpiresAt ? `${planLabel(proPlan)} · 有效期至 ${new Date(proExpiresAt).toLocaleDateString('zh-CN')}` : tierName!, grad: TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.pro }
+      ? { title: isLifetime ? `${tierName} · 永久` : `${tierName} 会员`, sub: isLifetime ? '一次买断 · 永久有效' : (proExpiresAt ? `${planLabel(proPlan)} · 有效期至 ${new Date(proExpiresAt).toLocaleDateString('zh-CN')}` : tierName!), grad: TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.pro }
       : status === 'trial'
         ? { title: '试用中', sub: `Pro 功能免费体验 · 剩 ${daysLeft} 天`, grad: 'linear-gradient(135deg,#ff9f0a,#ff375f)' }
         : status === 'expired'
           ? { title: '免费版', sub: '试用已结束 · 升级解锁全部功能', grad: 'linear-gradient(135deg,#8e8e93,#636366)' }
           : { title: '免费版', sub: '可免费试用 Pro 7 天', grad: 'linear-gradient(135deg,#8e8e93,#636366)' }
 
-  const gated = (reason: string, minTier: 'plus' | 'pro' | 'ultra', action: () => void) => () => {
-    const rank = isUltra ? 3 : isPro ? 2 : isPlus ? 1 : 0
-    const need = minTier === 'ultra' ? 3 : minTier === 'pro' ? 2 : 1
+  const gated = (reason: string, minTier: 'pro' | 'ultra', action: () => void) => () => {
+    const rank = isUltra ? 3 : isPro ? 2 : 0
+    const need = minTier === 'ultra' ? 3 : 2
     rank >= need ? action() : openPaywall(reason)
   }
 
@@ -89,9 +89,9 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
             {status === 'free' ? '开始 7 天免费试用' : '升级会员'}
           </button>
         )}
-        {tier && tier !== 'ultra' && (
+        {tier === 'pro' && !isLifetime && (
           <button onClick={() => openPaywall()} className="btn-ghost w-full mt-3 justify-center text-[13px]">
-            升级到 {tier === 'plus' ? 'Pro' : 'Ultra'} →
+            升级到 Ultra →
           </button>
         )}
       </div>
@@ -127,8 +127,8 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
         <h3 className="text-[15px] font-semibold mb-3 flex items-center gap-1.5"><CrownIcon size={16} className="text-[#ff9f0a]" />会员权益</h3>
         <div className="space-y-4">
           {TIER_INFO.map((info) => {
-            const rank = isUltra ? 3 : isPro ? 2 : isPlus ? 1 : 0
-            const tierRank = info.tier === 'ultra' ? 3 : info.tier === 'pro' ? 2 : 1
+            const rank = isUltra ? 3 : isPro ? 2 : 0
+            const tierRank = info.tier === 'ultra' ? 3 : 2
             const unlocked = rank >= tierRank
             return (
               <div key={info.tier}>
@@ -173,24 +173,27 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
         <div className="flex items-center gap-3 px-4 py-3.5">
           <span className="text-[#0a84ff]"><SparkIcon size={20} /></span>
           <div className="flex-1 min-w-0">
-            <div className="text-[15px] font-medium flex items-center gap-1.5">AI 智能增强 {!isPro && <LockIcon size={13} className="text-[#c7c7cc]" />}</div>
-            <div className="text-[12px] text-[#86868b]">用 AI 复核解析与健康建议</div>
+            <div className="text-[15px] font-medium flex items-center gap-1.5">AI 智能增强 {!canEnhance && <LockIcon size={13} className="text-[#c7c7cc]" />}</div>
+            <div className="text-[12px] text-[#86868b]">{hasOwnAiKey ? '已用自带 API · 免费' : '用 AI 复核解析与健康建议'}</div>
           </div>
-          <Toggle on={isPro && aiEnhance} disabled={!isPro} onClick={() => (isPro ? setAiEnhance(!aiEnhance) : openPaywall('AI 智能增强是 Pro 功能'))} />
+          <Toggle on={canEnhance && aiEnhance} disabled={!canEnhance} onClick={() => (canEnhance ? setAiEnhance(!aiEnhance) : openPaywall('AI 智能增强：升级 Pro，或在下方填自己的 API key 免费用'))} />
         </div>
       </div>
 
+      {/* 自带 API key（任何用户填了即可免费用全部 AI） */}
+      <UserAiPanel onToast={onToast} />
+
       {/* 数据管理 */}
       <div className="card overflow-hidden divide-y divide-[#00000008] dark:divide-[#ffffff0d]">
-        <Row icon={<CloudIcon size={20} />} title="云端同步" sub={syncing ? '同步中…' : (getLastSyncDisplay() ? `上次同步 ${getLastSyncDisplay()}` : '登录后可同步到云端')} locked={!isPlus} onClick={gated('云同步是 Plus 会员功能', 'plus', async () => {
-          if (!user) { onToast('请先登录'); return }
+        <Row icon={<CloudIcon size={20} />} title="云端同步" sub={syncing ? '同步中…' : (getLastSyncDisplay() ? `上次同步 ${getLastSyncDisplay()}` : '登录即可同步 · 免费')} locked={false} onClick={async () => {
+          if (!user) { openLogin(); return }
           setSyncing(true)
           const pushRes = await pushToCloud(expenses)
           setSyncing(false)
-          onToast(pushRes.ok ? pushRes.msg : pushRes.msg)
-        })} />
-        <Row icon={<RefreshIcon size={20} />} title="从云端恢复" sub="拉取云端数据合并到本地" locked={!isPlus} onClick={gated('云端恢复是 Plus 会员功能', 'plus', async () => {
-          if (!user) { onToast('请先登录'); return }
+          onToast(pushRes.msg)
+        }} />
+        <Row icon={<RefreshIcon size={20} />} title="从云端恢复" sub="拉取云端数据合并到本地 · 免费" locked={false} onClick={async () => {
+          if (!user) { openLogin(); return }
           setSyncing(true)
           const pullRes = await pullFromCloud()
           setSyncing(false)
@@ -199,11 +202,11 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
           onReload(merged)
           persist(merged)
           onToast(`已合并，共 ${merged.length} 条记录`)
-        })} />
-        <Row icon={<TrashIcon size={20} />} title="恢复已删除记录" sub="从云端找回误删的记录" locked={!isPlus} onClick={gated('恢复已删除记录是 Plus 会员功能', 'plus', () => {
-          if (!user) { onToast('请先登录'); return }
+        }} />
+        <Row icon={<TrashIcon size={20} />} title="恢复已删除记录" sub="从云端找回误删的记录 · 免费" locked={false} onClick={() => {
+          if (!user) { openLogin(); return }
           setRecoverOpen(true)
-        })} />
+        }} />
         <Row icon={<DownloadIcon size={20} />} title="导出 CSV" sub={`当前 ${expenses.length} 条记录`} locked={!isPro} onClick={gated('CSV 导出是 Pro 会员功能', 'pro', () => { downloadCSV(expenses); onToast('已导出 CSV') })} />
       </div>
 
@@ -322,8 +325,8 @@ function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; on
 
       {/* 发码 */}
       <div className="text-[12px] text-[#86868b] mb-2">② 批量生成 5 个 <b className="text-[#1d1d1f] dark:text-[#f5f5f7]">{tierName}</b> 兑换码（每个仅可用一次）</div>
-      <div className="grid grid-cols-3 gap-2">
-        {(['monthly', 'quarterly', 'annual'] as Plan[]).map((p) => (
+      <div className="grid grid-cols-2 gap-2">
+        {(['annual', 'lifetime'] as Plan[]).map((p) => (
           <button key={p} disabled={busy} onClick={() => mint(p)} className="btn-ghost justify-center text-[13px]">{planLabel(p)}×5</button>
         ))}
       </div>
@@ -348,8 +351,8 @@ function AdminPanel({ onToast, onClearData }: { onToast: (m: string) => void; on
         placeholder="buyer@example.com"
         className="w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3 py-2.5 text-[14px] outline-none mb-2"
       />
-      <div className="grid grid-cols-3 gap-2">
-        {(['monthly', 'quarterly', 'annual'] as Plan[]).map((p) => (
+      <div className="grid grid-cols-2 gap-2">
+        {(['annual', 'lifetime'] as Plan[]).map((p) => (
           <button key={p} disabled={busy || !email.trim()} onClick={() => grant(p)} className="btn-ghost justify-center text-[13px]">开{planLabel(p)}</button>
         ))}
       </div>
@@ -468,6 +471,90 @@ function AiConfigPanel({ onToast }: { onToast: (m: string) => void }) {
 
       <button onClick={save} disabled={busy || !loaded} className="btn-primary w-full justify-center text-[13px] mt-2 disabled:opacity-50">{busy ? '保存中…' : '保存 AI 配置'}</button>
       <p className="text-[11px] text-[#86868b] mt-2 leading-relaxed">密钥存于 Supabase，仅店主可写，不进代码或前端打包。内置 {AI_PROVIDERS.length - 1} 家兼容 OpenAI 格式的服务商，换厂商点一下即可；模型可在预设里选或自己填。</p>
+    </div>
+  )
+}
+
+// 用户自带 API key（任何人填了即可免费用全部 AI）
+function UserAiPanel({ onToast }: { onToast: (m: string) => void }) {
+  const { hasOwnAiKey, notifyOwnKeyChanged } = useEntitlement()
+  const [open, setOpen] = useState(false)
+  const [apiKey, setApiKey] = useState('')
+  const [baseURL, setBaseURL] = useState('')
+  const [model, setModel] = useState('')
+  const [provider, setProvider] = useState('custom')
+  const [show, setShow] = useState(false)
+
+  const expand = () => {
+    const u = loadUserAi()
+    setApiKey(u.apiKey); setBaseURL(u.baseURL); setModel(u.model); setProvider(matchProvider(u.baseURL))
+    setOpen(true)
+  }
+  const curProvider = AI_PROVIDERS.find((p) => p.id === provider)
+  const pickProvider = (p: typeof AI_PROVIDERS[number]) => {
+    setProvider(p.id)
+    if (p.id !== 'custom') { setBaseURL(p.baseURL); if (p.models.length && !p.models.includes(model)) setModel(p.models[0]) }
+  }
+  const save = () => {
+    if (!apiKey.trim()) { onToast('请填入 API Key'); return }
+    saveUserAi({ apiKey: apiKey.trim(), baseURL: baseURL.trim() || AI_DEFAULTS.baseURL, model: model.trim() || AI_DEFAULTS.model })
+    notifyOwnKeyChanged()
+    setOpen(false)
+    onToast('已保存，AI 已用你自己的 key 免费解锁 ✓')
+  }
+  const remove = () => {
+    clearUserAi(); notifyOwnKeyChanged(); setApiKey(''); setOpen(false)
+    onToast('已移除自带 key')
+  }
+  const inputCls = 'w-full rounded-xl bg-[#f5f5f7] dark:bg-[#2c2c2e] px-3 py-2.5 text-[13px] outline-none mb-2 font-mono'
+
+  return (
+    <div className="card overflow-hidden">
+      <button onClick={open ? () => setOpen(false) : expand} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e]/40">
+        <span className="text-[#0a84ff]"><SparkIcon size={20} /></span>
+        <div className="flex-1 min-w-0">
+          <div className="text-[15px] font-medium flex items-center gap-1.5">
+            自带 API · 免费解锁 AI
+            {hasOwnAiKey && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#30d158]/15 text-[#30d158] font-semibold">已启用</span>}
+          </div>
+          <div className="text-[12px] text-[#86868b]">填自己的大模型 key，AI 智能解析 + 饮食对话 全免费</div>
+        </div>
+        <ChevronRight size={18} className={`text-[#c7c7cc] shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 border-t border-[#00000010] dark:border-[#ffffff14] pt-3">
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {AI_PROVIDERS.map((p) => (
+              <button key={p.id} onClick={() => pickProvider(p)}
+                className={`text-[12px] px-2.5 py-1 rounded-full border transition-colors ${p.id === provider ? 'bg-[#0a84ff] text-white border-[#0a84ff]' : 'bg-transparent text-[#636366] dark:text-[#aeaeb2] border-[#d2d2d7] dark:border-[#48484a]'}`}>
+                {p.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[11px] text-[#86868b]">API Key{curProvider?.keyHint ? ` · ${curProvider.keyHint}` : ''}</label>
+            {curProvider?.site && <a href={curProvider.site} target="_blank" rel="noreferrer" className="text-[11px] text-[#0a84ff]">获取 Key ↗</a>}
+          </div>
+          <div className="relative">
+            <input value={show ? apiKey : (apiKey ? apiKey.slice(0, 6) + '••••••' + apiKey.slice(-4) : '')} onChange={(e) => { setApiKey(e.target.value); setShow(true) }} onFocus={() => setShow(true)} placeholder={curProvider?.keyHint ?? 'sk-...'} className={inputCls + ' pr-14'} spellCheck={false} />
+            <button onClick={() => setShow((s) => !s)} className="absolute right-3 top-2.5 text-[12px] text-[#0a84ff]">{show ? '隐藏' : '显示'}</button>
+          </div>
+          {curProvider && curProvider.models.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {curProvider.models.map((mm) => (
+                <button key={mm} onClick={() => setModel(mm)} className={`text-[12px] px-2.5 py-1 rounded-full border font-mono ${model === mm ? 'bg-[#30d158]/15 text-[#30d158] border-[#30d158]/40' : 'bg-transparent text-[#636366] dark:text-[#aeaeb2] border-[#d2d2d7] dark:border-[#48484a]'}`}>{mm}</button>
+              ))}
+            </div>
+          )}
+          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="模型，如 deepseek-chat" className={inputCls} spellCheck={false} />
+          <input value={baseURL} onChange={(e) => { setBaseURL(e.target.value); setProvider(matchProvider(e.target.value)) }} placeholder="接口地址（选服务商自动填）" className={inputCls} spellCheck={false} />
+          <div className="flex gap-2 mt-1">
+            <button onClick={save} className="btn-primary flex-1 justify-center text-[13px]">保存</button>
+            {hasOwnAiKey && <button onClick={remove} className="btn-ghost justify-center text-[13px] !text-[#ff3b30]">移除</button>}
+          </div>
+          <p className="text-[11px] text-[#86868b] mt-2 leading-relaxed">key 只存本机、直连厂商、不上传。填了就能免费用全部 AI，无需会员。</p>
+        </div>
+      )}
     </div>
   )
 }

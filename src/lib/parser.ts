@@ -437,6 +437,8 @@ function mealByHour(ts: number): MealType {
 // ---------- 分类 ----------
 function classify(lower: string, isFood: boolean): CategoryId {
   if (/请(同事|朋友|人|同学|老师|客人|领导|他|她|大家)|请客|随[份分]子|压岁钱|份子钱|彩礼/.test(lower)) return 'social'
+  // 话费/手机充值/流量 → 通讯（避免"手机充值"被"手机"误判为购物）
+  if (/充话费|话费充值|手机充值|话费|电话费|流量充值|充流量|宽带续费|宽带费/.test(lower)) return 'communication'
 
   const scores = new Map<CategoryId, number>()
   for (const cat of CATEGORY_LIST) {
@@ -525,6 +527,7 @@ function extractFoodNames(
   const core = text
     .replace(/[，,。；;、]?\s*时间[是为]?[^，,。；;、！？\n]*/g, '') // "时间是中午 12:30"
     .replace(TIME_CLOCK_RE, '')                                      // "9 点多" "12 点" "12:30"
+    .replace(/还有|外加|加上|再加|另外点了?|又点了?|配了?个?|配上/g, '、')  // 并列连接词 → 顿号
     .replace(/加(?=\s*(?:[一二两三四五六七八九十两几半\d]|份|碗|个|只|盘|杯|瓶|根|串))/g, '、') // "大头鱼加一份青椒" → 顿号
     .replace(/还(?=[点要加来买喝吃])/g, '、') // "火锅还点了瓶饮料" → 顿号(并列再点)
   const segments = core.split(/[，,、；;。！？\n]+/).map(s => s.trim()).filter(Boolean)

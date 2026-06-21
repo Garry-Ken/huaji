@@ -80,7 +80,7 @@ export interface AiProxyResult {
   tokens: number
 }
 
-/** 调用服务端 AI 代理。返回 {content, tokens} 或 {error}。 */
+/** 调用服务端 AI 代理（店主共享 key）。返回 {content, tokens} 或 {error}。 */
 export async function callAiProxy(payload: AiProxyPayload): Promise<AiProxyResult | { error: string }> {
   try {
     const { data, error } = await supabase.functions.invoke('ai-proxy', { body: payload })
@@ -92,4 +92,65 @@ export async function callAiProxy(payload: AiProxyPayload): Promise<AiProxyResul
   } catch (e) {
     return { error: e instanceof Error ? e.message : '网络错误' }
   }
+}
+
+// ============================================================================
+// 用户自带 API key —— 任何用户填了自己的 key 即可免费用 AI（存本地，直连厂商，
+// 不经店主代理、不烧店主额度）。这是用户自己的 key、自己的设备，本地存放可接受。
+// ============================================================================
+const USER_AI_KEY = 'huaji.userAi.v1'
+
+export interface UserAi { apiKey: string; baseURL: string; model: string }
+
+export function loadUserAi(): UserAi {
+  try {
+    const raw = localStorage.getItem(USER_AI_KEY)
+    if (raw) {
+      const j = JSON.parse(raw)
+      return { apiKey: j.apiKey || '', baseURL: j.baseURL || AI_DEFAULTS.baseURL, model: j.model || AI_DEFAULTS.model }
+    }
+  } catch { /* ignore */ }
+  return { apiKey: '', baseURL: AI_DEFAULTS.baseURL, model: AI_DEFAULTS.model }
+}
+
+export function saveUserAi(cfg: UserAi): void {
+  try { localStorage.setItem(USER_AI_KEY, JSON.stringify(cfg)) } catch { /* ignore */ }
+}
+
+export function clearUserAi(): void {
+  try { localStorage.removeItem(USER_AI_KEY) } catch { /* ignore */ }
+}
+
+export function hasUserAi(): boolean {
+  return !!loadUserAi().apiKey
+}
+
+/** 用自带 key 直连厂商。 */
+async function callUserAi(u: UserAi, payload: AiProxyPayload): Promise<AiProxyResult | { error: string }> {
+  try {
+    const res = await fetch(u.baseURL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${u.apiKey}` },
+      body: JSON.stringify({
+        model: payload.model || u.model,
+        messages: payload.messages,
+        temperature: payload.temperature ?? 0.3,
+        max_tokens: payload.max_tokens ?? 1024,
+      }),
+    })
+    if (!res.ok) return { error: `AI 请求失败 (${res.status})` }
+    const data = await res.json()
+    const content = data?.choices?.[0]?.message?.content?.trim()
+    if (!content) return { error: '未收到回复' }
+    return { content, tokens: data?.usage?.total_tokens ?? 0 }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : '网络错误' }
+  }
+}
+
+/** 统一 AI 调用：有自带 key 走自带(直连)，否则走店主代理。 */
+export async function callAi(payload: AiProxyPayload): Promise<AiProxyResult | { error: string }> {
+  const u = loadUserAi()
+  if (u.apiKey) return callUserAi(u, payload)
+  return callAiProxy(payload)
 }

@@ -22,7 +22,7 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource, 
   const recRef = useRef<Recognizer | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const aiSeq = useRef(0)
-  const { aiEnhance, isPro } = useEntitlement()
+  const { aiEnhance, canEnhance } = useEntitlement()
 
   const display = text + interim
   const localPreviews = useMemo(() => (display.trim() ? parseMultiExpense(display) : []), [display])
@@ -30,7 +30,7 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource, 
 
   useEffect(() => {
     const raw = display.trim()
-    if (!raw || !aiEnhance || !isPro || localPreviews.length === 0) { setAiResults(null); return }
+    if (!raw || !aiEnhance || !canEnhance || localPreviews.length === 0) { setAiResults(null); return }
     const seq = ++aiSeq.current
     setAiLoading(true)
     const timer = setTimeout(async () => {
@@ -38,14 +38,14 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource, 
       if (aiSeq.current === seq) { setAiResults(result); setAiLoading(false) }
     }, 800)
     return () => { clearTimeout(timer); if (aiSeq.current === seq) setAiLoading(false) }
-  }, [display, aiEnhance, isPro]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [display, aiEnhance, canEnhance]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const commit = async () => {
     const raw = display.trim()
     if (!raw) return
     // 先规则解析；若开启 AI 增强则在保存前补跑一次 AI，保证「先规则、再 AI」落到记录上
     let parsed: ParseResult[] | undefined = aiResults ?? undefined
-    if (!parsed && aiEnhance && isPro && localPreviews.length > 0) {
+    if (!parsed && aiEnhance && canEnhance && localPreviews.length > 0) {
       setAiLoading(true)
       const enhanced = await aiEnhanceParse(raw, localPreviews)
       setAiLoading(false)

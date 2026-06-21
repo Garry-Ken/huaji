@@ -41,7 +41,7 @@ export default function App() {
   const [accounts, setAccounts] = useState<AssetAccount[]>([])
   const [aiChatOpen, setAiChatOpen] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
-  const { status, tier, isPlus, daysLeft, openPaywall, user } = useEntitlement()
+  const { status, tier, daysLeft, openPaywall, user } = useEntitlement()
 
   // 初始化：主题 + 数据（首次注入示例）
   useEffect(() => {
@@ -70,17 +70,17 @@ export default function App() {
   const firstPullDone = useRef(false)
 
   useEffect(() => {
-    if (user && isPlus && expenses.length > 0 && firstPullDone.current) autoSync(expenses)
-  }, [expenses, user, isPlus])
+    if (user && expenses.length > 0 && firstPullDone.current) autoSync(expenses)
+  }, [expenses, user])
 
   // 账本变更自动上云
   useEffect(() => {
-    if (user && isPlus && ledgers.length > 0 && firstPullDone.current) autoSyncLedgers(ledgers)
-  }, [ledgers, user, isPlus])
+    if (user && ledgers.length > 0 && firstPullDone.current) autoSyncLedgers(ledgers)
+  }, [ledgers, user])
 
-  // 打开 / 切回窗口时，从云端拉取最新（记录 + 账本），合并到本地
+  // 打开 / 切回窗口时，从云端拉取最新（记录 + 账本），合并到本地（云同步免费，登录即用）
   useEffect(() => {
-    if (!user || !isPlus) { firstPullDone.current = false; return }
+    if (!user) { firstPullDone.current = false; return }
     let cancelled = false
     const sync = async () => {
       const res = await pullAll()
@@ -105,7 +105,7 @@ export default function App() {
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onFocus)
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus) }
-  }, [user, isPlus])
+  }, [user])
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -145,9 +145,9 @@ export default function App() {
   const updateLedger = useCallback((l: Ledger) => { updateLedgers(ledgers.map(x => x.id === l.id ? { ...l, updatedAt: Date.now() } : x)) }, [ledgers, updateLedgers])
   const deleteLedger = useCallback((id: string) => {
     updateLedgers(ledgers.filter(l => l.id !== id))
-    if (user && isPlus) syncLedgerDelete([id])
+    if (user) syncLedgerDelete([id])
     if (activeLedgerId === id) setActiveLedgerId('default')
-  }, [ledgers, activeLedgerId, updateLedgers, user, isPlus])
+  }, [ledgers, activeLedgerId, updateLedgers, user])
 
   const filteredExpenses = useMemo(() => {
     if (activeLedgerId === 'default') return expenses.filter(e => !e.ledgerId || e.ledgerId === 'default')
@@ -182,14 +182,14 @@ export default function App() {
     setEditing(null)
     setEditingNew(false)
     showToast('已删除')
-    if (user && isPlus) syncDeleteToCloud([id])
+    if (user) syncDeleteToCloud([id])
   }
 
   const batchRemove = (ids: string[]) => {
     const { remaining } = softDelete(new Set(ids), expenses)
     update(remaining)
     showToast(`已删除 ${ids.length} 条记录`)
-    if (user && isPlus) syncDeleteToCloud(ids)
+    if (user) syncDeleteToCloud(ids)
   }
 
   const openNew = () => {
@@ -258,10 +258,6 @@ export default function App() {
           ) : tier === 'pro' || status === 'pro' ? (
             <button onClick={() => setTab('account')} className="pill text-white font-semibold !px-2.5" style={{ background: 'linear-gradient(135deg,#0a84ff,#30d158)' }} title="Pro 会员">
               <CrownIcon size={13} />Pro
-            </button>
-          ) : tier === 'plus' || status === 'plus' ? (
-            <button onClick={() => setTab('account')} className="pill text-white font-semibold !px-2.5" style={{ background: 'linear-gradient(135deg,#0a84ff,#5ac8fa)' }} title="Plus 会员">
-              <CrownIcon size={13} />Plus
             </button>
           ) : status === 'trial' ? (
             <button onClick={() => setTab('account')} className="pill font-medium bg-[#ff9f0a]/15 text-[#ff9f0a]" title="试用中">

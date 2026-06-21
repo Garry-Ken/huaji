@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { supabase } from './supabase'
+import { hasUserAi } from './aiConfig'
 
 // ============================================================================
 // 权益中心 (Entitlement) — 服务端校验版
@@ -19,10 +20,10 @@ const DAY = 86400000
 const TRIAL_DAYS = 7
 const STORE_KEY = 'huaji.entitlement.v1' // 仅存本地偏好 + 试用开始时间
 
-export type Tier = 'plus' | 'pro' | 'ultra'
-export type Plan = 'monthly' | 'quarterly' | 'annual'
+export type Tier = 'pro' | 'ultra'
+export type Plan = 'annual' | 'lifetime'
 export type Region = 'cn' | 'intl'
-export type Status = 'free' | 'trial' | 'plus' | 'pro' | 'ultra' | 'expired'
+export type Status = 'free' | 'trial' | 'pro' | 'ultra' | 'expired'
 
 interface LocalPrefs {
   region: Region
@@ -50,59 +51,35 @@ export interface TierInfo {
   gradient: string
 }
 
+// 定价：Pro 年付 / Ultra 年付 / 永久买断(=Ultra 永久)。云同步·多账本免费。
 const RAW = {
-  cn: {
-    sym: '¥',
-    plus:  { monthly: 9.9,  quarterly: 23.7,  annual: 79 },
-    pro:   { monthly: 19.9, quarterly: 47.8,  annual: 159 },
-    ultra: { monthly: 49.9, quarterly: 119.8, annual: 399 },
-  },
-  intl: {
-    sym: '$',
-    plus:  { monthly: 4.99,  quarterly: 11.99,  annual: 39.99 },
-    pro:   { monthly: 9.99,  quarterly: 23.99,  annual: 79.99 },
-    ultra: { monthly: 19.99, quarterly: 47.99,  annual: 159.99 },
-  },
+  cn:   { sym: '¥', pro: { annual: 60 },  ultra: { annual: 168, lifetime: 199 } },
+  intl: { sym: '$', pro: { annual: 12 },  ultra: { annual: 28,  lifetime: 33 } },
 } as const
 
 export const TIER_INFO: TierInfo[] = [
   {
-    tier: 'plus', name: 'Plus', tagline: '云端守护',
-    gradient: 'linear-gradient(135deg,#0a84ff,#5ac8fa)',
-    features: ['多账本管理', '云端自动同步', '云端恢复删除记录 (5次/月)', '数据导入导出 (5次/月)'],
-  },
-  {
-    tier: 'pro', name: 'Pro', tagline: '智能分析', highlight: true,
+    tier: 'pro', name: 'Pro', tagline: '智能解析',
     gradient: 'linear-gradient(135deg,#0a84ff,#30d158)',
-    features: ['包含 Plus 全部功能', 'AI 智能增强解析', '季度/半年/年度深度分析', 'CSV 导出', '数据导入导出 (10次/月)'],
+    features: ['AI 智能增强解析', '季度/半年/年度深度分析', '数据导入导出', '（云同步·多账本·云端恢复 已免费）'],
   },
   {
-    tier: 'ultra', name: 'Ultra', tagline: 'AI 营养师',
+    tier: 'ultra', name: 'Ultra', tagline: 'AI 营养师', highlight: true,
     gradient: 'linear-gradient(135deg,#af52de,#ff375f)',
-    features: ['包含 Pro 全部功能', 'AI 饮食对话 (1亿 token/月)', '无限导入导出', '优先客服支持'],
+    features: ['包含 Pro 全部功能', 'AI 饮食对话（营养师）', '无限数据导入导出', '优先客服支持'],
   },
 ]
 
 export function pricing(region: Region, tier: Tier = 'pro'): { sym: string; plans: PlanInfo[] } {
-  const r = RAW[region][tier]
+  const r = RAW[region][tier] as { annual: number; lifetime?: number }
   const round = (n: number) => Math.round(n * 100) / 100
-  const monthlyTotalForTerm = (months: number) => r.monthly * months
-  const mk = (id: Plan, total: number, months: number, badge?: string): PlanInfo => {
-    const save = 1 - total / monthlyTotalForTerm(months)
-    return {
-      id,
-      label: id === 'monthly' ? '月度' : id === 'quarterly' ? '季度' : '年度',
-      total: round(total),
-      months,
-      perMonth: round(total / months),
-      saveLabel: save > 0.01 ? `省 ${Math.round(save * 100)}%` : undefined,
-      badge,
-    }
+  const plans: PlanInfo[] = [
+    { id: 'annual', label: '年付', total: round(r.annual), months: 12, perMonth: round(r.annual / 12) },
+  ]
+  if (r.lifetime != null) {
+    plans.push({ id: 'lifetime', label: '永久买断', total: round(r.lifetime), months: 0, perMonth: 0, badge: '最划算', saveLabel: '一次付费 · 永久有效' })
   }
-  return {
-    sym: RAW[region].sym,
-    plans: [mk('monthly', r.monthly, 1), mk('quarterly', r.quarterly, 3), mk('annual', r.annual, 12, '最划算')],
-  }
+  return { sym: RAW[region].sym, plans }
 }
 
 // 旧版兼容：无参调用返回 Pro 定价
@@ -175,9 +152,15 @@ interface Ctx {
   isPlus: boolean
   isPro: boolean
   isUltra: boolean
+  isLifetime: boolean
   daysLeft: number
   proPlan?: Plan
   proExpiresAt?: number
+  // 自带 API key（任何用户填了自己的 key 即可免费用 AI）
+  hasOwnAiKey: boolean
+  canEnhance: boolean   // AI 智能增强解析：Pro+ 或 自带 key
+  canDietChat: boolean  // AI 饮食对话：Ultra 或 自带 key
+  notifyOwnKeyChanged: () => void
   // 账号
   user: AppUser | null
   isAdmin: boolean
@@ -222,6 +205,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   const [paywallReason, setPaywallReason] = useState<string | undefined>()
   const [loginOpen, setLoginOpen] = useState(false)
   const [passwordRecovery, setPasswordRecovery] = useState(false)
+  const [ownKeyTick, setOwnKeyTick] = useState(0) // 自带 key 变更后触发重算
 
   useEffect(() => persistLocal(local), [local])
 
@@ -367,9 +351,16 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
     const activeTier: Tier | undefined = isAdmin ? 'ultra' : serverActive ? (serverEnt?.tier ?? 'pro') : undefined
     const status: Status = serverActive ? (activeTier ?? 'pro') : trialActive ? 'trial' : local.trialStartedAt ? 'expired' : 'free'
     const daysLeft = local.trialStartedAt ? Math.max(0, Math.ceil((trialEnds - now) / DAY)) : 0
-    const tierRank = (t?: Tier) => t === 'ultra' ? 3 : t === 'pro' ? 2 : t === 'plus' ? 1 : 0
+    const tierRank = (t?: Tier) => t === 'ultra' ? 3 : t === 'pro' ? 2 : 0
     const effectiveTier = serverActive ? activeTier : trialActive ? 'pro' as Tier : undefined
     const rank = tierRank(effectiveTier)
+    const isPro = rank >= 2
+    const isUltra = rank >= 3
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    ownKeyTick
+    const hasOwnAiKey = hasUserAi()
+    // 永久 = lifetime 计划（服务端 expiresAt 给到极远期）
+    const isLifetime = serverEnt?.plan === 'lifetime' || (serverActive && !isAdmin && !!serverEnt?.expiresAt && serverEnt.expiresAt - now > 50 * 365 * DAY)
     return {
       region: local.region,
       aiEnhance: local.aiEnhance,
@@ -377,9 +368,14 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       setAiEnhance: (v) => setLocal((p) => ({ ...p, aiEnhance: v })),
       status,
       tier: effectiveTier,
-      isPlus: rank >= 1,
-      isPro: rank >= 2,
-      isUltra: rank >= 3,
+      isPlus: isPro,
+      isPro,
+      isUltra,
+      isLifetime,
+      hasOwnAiKey,
+      canEnhance: isPro || hasOwnAiKey,
+      canDietChat: isUltra || hasOwnAiKey,
+      notifyOwnKeyChanged: () => setOwnKeyTick((t) => t + 1),
       daysLeft,
       proPlan: serverEnt?.plan,
       proExpiresAt: serverActive ? serverEnt?.expiresAt : undefined,
@@ -410,7 +406,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       openLogin: () => setLoginOpen(true),
       closeLogin: () => setLoginOpen(false),
     }
-  }, [local, user, serverEnt, isAdmin, authReady, paywallOpen, paywallReason, loginOpen, passwordRecovery, sendOtp, verifyOtp, signInWithPassword, resetPassword, updatePassword, signOut, startTrial, redeem, mintCode, mintCodes, adminGrant, refresh, restore, resetLocal, openPaywall])
+  }, [local, user, serverEnt, isAdmin, authReady, ownKeyTick, paywallOpen, paywallReason, loginOpen, passwordRecovery, sendOtp, verifyOtp, signInWithPassword, resetPassword, updatePassword, signOut, startTrial, redeem, mintCode, mintCodes, adminGrant, refresh, restore, resetLocal, openPaywall])
 
   return <EntitlementContext.Provider value={value}>{children}</EntitlementContext.Provider>
 }
