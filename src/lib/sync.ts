@@ -1,5 +1,5 @@
 import { supabase, SUPABASE_READY } from './supabase'
-import type { Expense } from '../types'
+import type { Expense, Ledger } from '../types'
 
 const LAST_SYNC_KEY = 'huaji.lastSync.v1'
 
@@ -61,14 +61,27 @@ export async function pullFromCloud(): Promise<{ ok: boolean; records: Expense[]
   return { ok: true, records, msg: `已拉取 ${records.length} 条记录` }
 }
 
+// 后写赢：以 updatedAt(无则回退 createdAt) 较大者为准，让编辑也能跨端同步
+function stamp(e: { updatedAt?: number; createdAt: number }): number {
+  return e.updatedAt ?? e.createdAt
+}
+
 export function mergeRecords(local: Expense[], remote: Expense[]): Expense[] {
   const map = new Map<string, Expense>()
   for (const r of remote) map.set(r.id, r)
   for (const l of local) {
     const existing = map.get(l.id)
-    if (!existing || l.createdAt >= existing.createdAt) {
-      map.set(l.id, l)
-    }
+    if (!existing || stamp(l) >= stamp(existing)) map.set(l.id, l)
+  }
+  return [...map.values()]
+}
+
+export function mergeLedgers(local: Ledger[], remote: Ledger[]): Ledger[] {
+  const map = new Map<string, Ledger>()
+  for (const r of remote) map.set(r.id, r)
+  for (const l of local) {
+    const existing = map.get(l.id)
+    if (!existing || stamp(l) >= stamp(existing)) map.set(l.id, l)
   }
   return [...map.values()]
 }
@@ -136,6 +149,80 @@ export async function autoSync(records: Expense[]): Promise<void> {
     syncStatusCb?.(res.ok ? 'done' : 'error')
     if (res.ok) setTimeout(() => syncStatusCb?.('idle'), 2000)
   }, 3000)
+}
+
+// ---------- 账本同步（与 records 同构）----------
+export async function pushLedgers(ledgers: Ledger[]): Promise<{ ok: boolean; msg: string }> {
+  if (!SUPABASE_READY) return { ok: false, msg: '云端未配置' }
+  const { data: sess } = await supabase.auth.getSession()
+  if (!sess.session) return { ok: false, msg: '请先登录' }
+  const userId = sess.session.user.id
+  const rows = ledgers
+    .filter(l => l.id !== 'default') // 默认账本无需上云
+    .map(l => ({ user_id: userId, ledger_id: l.id, data: l, updated_at: new Date().toISOString(), deleted: false }))
+  if (rows.length === 0) return { ok: true, msg: '无账本需同步' }
+  const { error } = await supabase.from('ledgers').upsert(rows, { onConflict: 'user_id,ledger_id' })
+  if (error) {
+    if (/relation.*does not exist/i.test(error.message)) return { ok: false, msg: '云端 ledgers 表未创建，请重跑 schema.sql' }
+    return { ok: false, msg: error.message }
+  }
+  return { ok: true, msg: `已同步 ${rows.length} 个账本` }
+}
+
+export async function syncLedgerDelete(ids: string[]): Promise<{ ok: boolean; msg: string }> {
+  if (!SUPABASE_READY) return { ok: false, msg: '云端未配置' }
+  const { data: sess } = await supabase.auth.getSession()
+  if (!sess.session) return { ok: false, msg: '请先登录' }
+  const { error } = await supabase.from('ledgers')
+    .update({ deleted: true, updated_at: new Date().toISOString() })
+    .eq('user_id', sess.session.user.id).in('ledger_id', ids)
+  if (error) return { ok: false, msg: error.message }
+  return { ok: true, msg: '已删除账本' }
+}
+
+let ledgerTimer: ReturnType<typeof setTimeout> | null = null
+export async function autoSyncLedgers(ledgers: Ledger[]): Promise<void> {
+  if (ledgerTimer) clearTimeout(ledgerTimer)
+  ledgerTimer = setTimeout(() => { ledgerTimer = null; pushLedgers(ledgers) }, 3000)
+}
+
+// ---------- 打开/切回时统一拉取（记录 + 账本，含删除传播）----------
+export interface PullAllResult {
+  ok: boolean
+  records: Expense[]
+  deletedRecordIds: string[]
+  ledgers: Ledger[]
+  deletedLedgerIds: string[]
+  msg: string
+}
+
+export async function pullAll(): Promise<PullAllResult> {
+  const empty: PullAllResult = { ok: false, records: [], deletedRecordIds: [], ledgers: [], deletedLedgerIds: [], msg: '' }
+  if (!SUPABASE_READY) return { ...empty, msg: '云端未配置' }
+  const { data: sess } = await supabase.auth.getSession()
+  if (!sess.session) return { ...empty, msg: '请先登录' }
+  const uid = sess.session.user.id
+
+  const [recRes, ledRes] = await Promise.all([
+    supabase.from('records').select('record_id, data, deleted').eq('user_id', uid),
+    supabase.from('ledgers').select('ledger_id, data, deleted').eq('user_id', uid),
+  ])
+  if (recRes.error) return { ...empty, msg: recRes.error.message }
+
+  const records: Expense[] = [], deletedRecordIds: string[] = []
+  for (const r of recRes.data ?? []) {
+    if (r.deleted) deletedRecordIds.push(r.record_id)
+    else records.push({ type: 'expense' as const, ...r.data } as Expense)
+  }
+  const ledgers: Ledger[] = [], deletedLedgerIds: string[] = []
+  // ledgers 表可能尚未创建（用户没重跑 SQL），忽略其错误，不影响记录同步
+  for (const l of (ledRes.error ? [] : ledRes.data ?? [])) {
+    if (l.deleted) deletedLedgerIds.push(l.ledger_id)
+    else ledgers.push(l.data as Ledger)
+  }
+
+  setLastSync()
+  return { ok: true, records, deletedRecordIds, ledgers, deletedLedgerIds, msg: '已同步' }
 }
 
 export function getLastSyncDisplay(): string | null {

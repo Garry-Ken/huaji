@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import type { AssetAccount, Expense, InputSource, Ledger, ParseResult } from './types'
 import { parseMultiExpense } from './lib/parser'
 import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid, hasSampleFlag, setSampleFlag, clearSampleFlag, loadBudget, DEFAULT_LEDGER, loadLedgers, persistLedgers, loadAccounts, persistAccounts, softDelete } from './lib/storage'
-import { autoSync, syncDeleteToCloud, onSyncStatus } from './lib/sync'
+import { autoSync, syncDeleteToCloud, onSyncStatus, autoSyncLedgers, syncLedgerDelete, pullAll, mergeRecords, mergeLedgers } from './lib/sync'
 import { SyncIndicator, type SyncStatus } from './components/SyncIndicator'
 import { generateSample } from './lib/sampleData'
 import { RecordsView } from './components/RecordsView'
@@ -70,6 +70,38 @@ export default function App() {
     if (user && isPlus && expenses.length > 0) autoSync(expenses)
   }, [expenses, user, isPlus])
 
+  // 账本变更自动上云
+  useEffect(() => {
+    if (user && isPlus && ledgers.length > 0) autoSyncLedgers(ledgers)
+  }, [ledgers, user, isPlus])
+
+  // 打开 / 切回窗口时，从云端拉取最新（记录 + 账本），合并到本地
+  useEffect(() => {
+    if (!user || !isPlus) return
+    let cancelled = false
+    const sync = async () => {
+      const res = await pullAll()
+      if (!res.ok || cancelled) return
+      setExpenses(prev => {
+        const delSet = new Set(res.deletedRecordIds)
+        const merged = sortByTime(mergeRecords(prev, res.records).filter(e => !delSet.has(e.id)))
+        persist(merged)
+        return merged
+      })
+      setLedgers(prev => {
+        const delSet = new Set(res.deletedLedgerIds)
+        const merged = mergeLedgers(prev, res.ledgers).filter(l => !delSet.has(l.id))
+        persistLedgers(merged)
+        return merged
+      })
+    }
+    sync()
+    const onFocus = () => { if (document.visibilityState === 'visible') sync() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => { cancelled = true; window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus) }
+  }, [user, isPlus])
+
   const showToast = (msg: string) => {
     setToast(msg)
     window.setTimeout(() => setToast(null), 1800)
@@ -104,12 +136,13 @@ export default function App() {
   const updateLedgers = useCallback((next: Ledger[]) => { setLedgers(next); persistLedgers(next) }, [])
   const updateAccounts = useCallback((next: AssetAccount[]) => { setAccounts(next); persistAccounts(next) }, [])
 
-  const addLedger = useCallback((l: Ledger) => { updateLedgers([...ledgers, l]); setActiveLedgerId(l.id) }, [ledgers, updateLedgers])
-  const updateLedger = useCallback((l: Ledger) => { updateLedgers(ledgers.map(x => x.id === l.id ? l : x)) }, [ledgers, updateLedgers])
+  const addLedger = useCallback((l: Ledger) => { updateLedgers([...ledgers, { ...l, updatedAt: Date.now() }]); setActiveLedgerId(l.id) }, [ledgers, updateLedgers])
+  const updateLedger = useCallback((l: Ledger) => { updateLedgers(ledgers.map(x => x.id === l.id ? { ...l, updatedAt: Date.now() } : x)) }, [ledgers, updateLedgers])
   const deleteLedger = useCallback((id: string) => {
     updateLedgers(ledgers.filter(l => l.id !== id))
+    if (user && isPlus) syncLedgerDelete([id])
     if (activeLedgerId === id) setActiveLedgerId('default')
-  }, [ledgers, activeLedgerId, updateLedgers])
+  }, [ledgers, activeLedgerId, updateLedgers, user, isPlus])
 
   const filteredExpenses = useMemo(() => {
     if (activeLedgerId === 'default') return expenses.filter(e => !e.ledgerId || e.ledgerId === 'default')
@@ -130,8 +163,9 @@ export default function App() {
   }
 
   const saveEdit = (e: Expense) => {
-    if (editingNew) update([e, ...expenses])
-    else update(expenses.map((x) => (x.id === e.id ? e : x)))
+    const stamped = { ...e, updatedAt: Date.now() }
+    if (editingNew) update([stamped, ...expenses])
+    else update(expenses.map((x) => (x.id === stamped.id ? stamped : x)))
     setEditing(null)
     setEditingNew(false)
     showToast('已保存 ✓')

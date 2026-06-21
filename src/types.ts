@@ -44,6 +44,7 @@ export interface Expense {
   note?: string
   occurredAt: number // 消费实际发生时间(ms)，由解析推断
   createdAt: number // 原始录入时间(ms)
+  updatedAt?: number // 最后修改时间(ms)，用于多端同步冲突解决(后写赢)
   source: InputSource
   rawText: string // 原始输入文本
   meal?: MealType // 餐次（饮食类）
@@ -79,6 +80,7 @@ export interface Ledger {
   name: string
   emoji: string
   createdAt: number
+  updatedAt?: number // 最后修改时间(ms)，多端同步冲突解决
   description?: string
   template?: string
   color?: string

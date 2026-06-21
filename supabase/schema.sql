@@ -195,6 +195,26 @@ create policy "users manage own records" on public.records
 -- 给 authenticated 角色开放 records 表的 select/insert/update
 grant select, insert, update on public.records to authenticated;
 
+-- 账本同步表：每个账本一行，以 (user_id, ledger_id) 唯一（与 records 同构）
+create table if not exists public.ledgers (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  ledger_id  text not null,
+  data       jsonb not null,
+  updated_at timestamptz not null default now(),
+  deleted    boolean not null default false,
+  unique(user_id, ledger_id)
+);
+
+alter table public.ledgers enable row level security;
+
+drop policy if exists "users manage own ledgers" on public.ledgers;
+create policy "users manage own ledgers" on public.ledgers
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+grant select, insert, update on public.ledgers to authenticated;
+
 -- ============================================================================
 -- 管理员设置
 --

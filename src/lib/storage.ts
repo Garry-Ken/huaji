@@ -116,6 +116,7 @@ export function makeExpense(parse: ParseResult, rawText: string, source: InputSo
     location: parse.location,
     occurredAt: parse.occurredAt || now,
     createdAt: now,
+    updatedAt: now,
     source,
     rawText,
     note: rawText,
