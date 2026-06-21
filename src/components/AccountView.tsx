@@ -7,6 +7,7 @@ import { exportToJSON, importFromJSON, loadBudget, saveBudget, persist, sortByTi
 import { pushToCloud, pullFromCloud, mergeRecords, getLastSyncDisplay } from '../lib/sync'
 import { loadAiConfig, saveAiConfig, AI_DEFAULTS } from '../lib/aiConfig'
 import { AI_PROVIDERS, matchProvider } from '../lib/aiProviders'
+import { checkUpdate } from '../lib/appUpdate'
 import { CrownIcon, LockIcon, CheckIcon, DownloadIcon, CloudIcon, SparkIcon, ChevronRight, UserIcon, UploadIcon, ShieldIcon, TargetIcon, RefreshIcon, InfoIcon, TrashIcon } from './icons'
 import { AssetsCard } from './AssetsCard'
 import { RecoverSheet } from './RecoverSheet'
@@ -17,7 +18,7 @@ const TIER_GRADIENTS: Record<string, string> = {
   ultra: 'linear-gradient(135deg,#af52de,#ff375f)',
 }
 
-const APP_VERSION = '0.4.13'
+const APP_VERSION = '0.4.14'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
@@ -238,6 +239,7 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
             <div className="text-[12px] text-[#86868b]">v{APP_VERSION} · 本地优先 · 隐私安全</div>
           </div>
         </div>
+        <UpdateRow onToast={onToast} />
         <div className="flex items-center gap-3 px-4 py-3.5">
           <span className="text-[#636366] dark:text-[#aeaeb2]"><ShieldIcon size={20} /></span>
           <div className="flex-1 min-w-0">
@@ -467,6 +469,37 @@ function AiConfigPanel({ onToast }: { onToast: (m: string) => void }) {
       <button onClick={save} disabled={busy || !loaded} className="btn-primary w-full justify-center text-[13px] mt-2 disabled:opacity-50">{busy ? '保存中…' : '保存 AI 配置'}</button>
       <p className="text-[11px] text-[#86868b] mt-2 leading-relaxed">密钥存于 Supabase，仅店主可写，不进代码或前端打包。内置 {AI_PROVIDERS.length - 1} 家兼容 OpenAI 格式的服务商，换厂商点一下即可；模型可在预设里选或自己填。</p>
     </div>
+  )
+}
+
+function UpdateRow({ onToast }: { onToast: (m: string) => void }) {
+  const [busy, setBusy] = useState(false)
+  const [info, setInfo] = useState<{ latest: string; hasUpdate: boolean; url: string } | null>(null)
+
+  const check = async () => {
+    if (busy) return
+    setBusy(true)
+    const r = await checkUpdate(APP_VERSION)
+    setBusy(false)
+    if ('error' in r) { onToast(r.error); return }
+    setInfo(r)
+    if (!r.hasUpdate) onToast('已是最新版 ✓')
+  }
+
+  return (
+    <button onClick={info?.hasUpdate ? () => window.open(info.url, '_blank') : check} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e]/40 transition-colors">
+      <span className="text-[#636366] dark:text-[#aeaeb2]"><RefreshIcon size={20} /></span>
+      <div className="flex-1 min-w-0">
+        <div className="text-[15px] font-medium flex items-center gap-1.5">
+          {info?.hasUpdate ? '发现新版本' : '检查更新'}
+          {info?.hasUpdate && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ff3b30] text-white font-semibold">v{info.latest}</span>}
+        </div>
+        <div className="text-[12px] text-[#86868b] truncate">
+          {busy ? '检查中…' : info?.hasUpdate ? '点击前往下载（覆盖安装，无需卸载）' : `当前 v${APP_VERSION}`}
+        </div>
+      </div>
+      <ChevronRight size={18} className="text-[#c7c7cc] shrink-0" />
+    </button>
   )
 }
 

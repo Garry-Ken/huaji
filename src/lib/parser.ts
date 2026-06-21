@@ -314,8 +314,11 @@ export function parseExpense(rawText: string, now = new Date()): ParseResult {
   // 单品时抽取容量/数量（一桶5升 / 一瓶 / 500ml），列表小字展示
   const quantity = items.length === 1 && txType === 'expense' ? extractQuantity(text) : undefined
 
-  const meal: MealType | undefined = category === 'food' ? mealFromTime ?? mealByHour(time) : undefined
-  const health = category === 'food' ? analyzeMeal(text) : undefined
+  // 「买/囤」而非「吃/喝」= 采购，不算一餐：不打餐次、不打健康分（买瓶水不该被当今日美食）
+  const isPurchase = /买|购|采购|囤|下单/.test(text) && !/吃|喝|食(?!堂)|聚餐|早餐|午餐|晚餐|夜宵|宵夜|下午茶|点的?餐/.test(text)
+  const isMeal = category === 'food' && !isPurchase
+  const meal: MealType | undefined = isMeal ? mealFromTime ?? mealByHour(time) : undefined
+  const health = isMeal ? analyzeMeal(text) : undefined
 
   let confidence = 0.4
   if (amount != null) confidence += 0.3
@@ -459,6 +462,8 @@ function extractLocation(text: string): string | undefined {
 const QUANTITY_RE = /[一二两三四五六七八九十几半\d]+\s*(?:份|碗|杯|个|只|盒|袋|瓶|块|片|盘|包|桶|罐|条|把|颗|粒|串|根|口|桌|顿|双|对)/g
 // 金额片段：30 / 30元 / 30块钱 / ¥30
 const AMOUNT_FRAG_RE = /\d+(?:\.\d+)?\s*(?:元|块钱?|块|圆|钱|毛|角|¥|￥)?/g
+// 时钟时间：12:30 / 9 点多 / 12 点 / 8 点半 / 7 点 20 分（用于从菜名里剔除）
+const TIME_CLOCK_RE = /\d+\s*[:：]\s*\d+|\d+\s*点(?:\s*半|\s*多|\s*钟)?(?:\s*\d+\s*分?)?/g
 // 菜名前缀垃圾：时间词 + 地点介词 + 进食动词 + 量词，从开头连续吃掉
 const FOOD_LEADING_RE = /^(?:今天|昨天|前天|明天|早上|早晨|上午|中午|下午|午后|傍晚|晚上|今晚|昨晚|凌晨|和|跟|与|及|在|去|到|的|了|还|又|再|顿|份|聚餐|聚会|早茶|早点|宵夜|夜宵|加餐|下午茶|办酒席|请客|请|约了?|和朋友|和同事|跟朋友|跟同事|吃了?饭?|喝了?水?|点了?|买了?|来了?|整了?|搞了?|煮了?|做了?|烤了?|炸了?|蒸了?|炒了?|啃了?|嗑了?|嚼了?|[一二两三四五六七八九十几半\d]+\s*(?:份|碗|杯|个|只|盒|袋|瓶|块|片|盘|包|桶|罐|条|把|颗|粒|串|根|口|桌|顿))+/
 // 停用词：含这些的片段不是菜名（时间/金额/结账/评价类）
@@ -479,18 +484,22 @@ function extractQuantity(text: string): string | undefined {
 
 /** 把一个小句洗成纯菜名（去地点、去金额、去量词、去前缀垃圾） */
 function cleanDish(seg: string, location?: string, merchant?: string): string {
-  let s = seg.trim()
+  let s = seg.replace(/\s+/g, '') // 去掉空格，避免"昨天晚上 吃了"断在空格处
   if (location) s = s.split(location).join('')
   if (merchant) s = s.split(merchant).join('')
   s = s
+    .replace(TIME_CLOCK_RE, '')                                     // 残留时钟
     .replace(AMOUNT_FRAG_RE, '')
     .replace(QUANTITY_RE, '')
     .replace(FOOD_LEADING_RE, '')
+    .replace(/^[点多半钟分]+/, '')                                   // 残留时间字"点多/点"
     .replace(/^(?:杯|碗|盘|份|个|只|根|块|片|串|瓶|盒|袋|桶|罐)/, '') // 光杆量词，如"杯拿铁"
     .replace(/^[的了和跟与及在去到，,、]+/, '')
     .replace(/(?:吃饭|吃了饭|吃的|用餐|的)$/, '')                    // 收尾的"吃饭/吃的"
-    .replace(/[的了。、，；;：:！？\s]+$/, '')
+    .replace(/[的了。、，；;：:！？]+$/, '')
     .trim()
+  // 纯时间/数量残渣（如"点""多""份"）不算菜名
+  if (/^[点多半钟分份个只块片元角]*$/.test(s)) return ''
   return s
 }
 
@@ -501,8 +510,11 @@ function extractFoodNames(
   merchant?: string,
 ): string[] {
   const lower = text.toLowerCase()
-  // 先剔除显式时间句，如 "时间是中午 12:30"、"，时间 12 点"
-  const core = text.replace(/[，,。；;、]?\s*时间[是为]?[^，,。；;、！？\n]*/g, '')
+  // 剔除时间句/时钟，并把"加一份…"这类并列连接词转成分隔符
+  const core = text
+    .replace(/[，,。；;、]?\s*时间[是为]?[^，,。；;、！？\n]*/g, '') // "时间是中午 12:30"
+    .replace(TIME_CLOCK_RE, '')                                      // "9 点多" "12 点" "12:30"
+    .replace(/加(?=\s*(?:[一二两三四五六七八九十两几半\d]|份|碗|个|只|盘|杯|瓶|根|串))/g, '、') // "大头鱼加一份青椒" → 顿号
   const segments = core.split(/[，,、；;。！？\n]+/).map(s => s.trim()).filter(Boolean)
   if (segments.length > 1) {
     const names: string[] = []
