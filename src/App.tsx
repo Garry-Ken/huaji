@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { AssetAccount, Expense, InputSource, Ledger, ParseResult } from './types'
 import { parseMultiExpense } from './lib/parser'
@@ -66,22 +66,27 @@ export default function App() {
     localStorage.setItem('huaji.theme', dark ? 'dark' : 'light')
   }, [dark])
 
+  // 先拉后推：首次从云端拉取合并完成前，不推送本地，避免旧数据覆盖云端他端的新编辑
+  const firstPullDone = useRef(false)
+
   useEffect(() => {
-    if (user && isPlus && expenses.length > 0) autoSync(expenses)
+    if (user && isPlus && expenses.length > 0 && firstPullDone.current) autoSync(expenses)
   }, [expenses, user, isPlus])
 
   // 账本变更自动上云
   useEffect(() => {
-    if (user && isPlus && ledgers.length > 0) autoSyncLedgers(ledgers)
+    if (user && isPlus && ledgers.length > 0 && firstPullDone.current) autoSyncLedgers(ledgers)
   }, [ledgers, user, isPlus])
 
   // 打开 / 切回窗口时，从云端拉取最新（记录 + 账本），合并到本地
   useEffect(() => {
-    if (!user || !isPlus) return
+    if (!user || !isPlus) { firstPullDone.current = false; return }
     let cancelled = false
     const sync = async () => {
       const res = await pullAll()
-      if (!res.ok || cancelled) return
+      if (cancelled) return
+      firstPullDone.current = true // 拉取完成（成功/失败都放行后续推送）
+      if (!res.ok) return
       setExpenses(prev => {
         const delSet = new Set(res.deletedRecordIds)
         const merged = sortByTime(mergeRecords(prev, res.records).filter(e => !delSet.has(e.id)))
