@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { Expense, InputSource } from '../types'
+import type { Expense, InputSource, ParseResult } from '../types'
 import { categoryMeta } from '../lib/categories'
 import { yuan, timeShort, relativeDay } from '../lib/format'
 import { startOfDay } from '../lib/date'
@@ -106,7 +106,7 @@ export function RecordsView({
   onClearAll,
 }: {
   expenses: Expense[]
-  onAdd: (raw: string, source: InputSource) => void
+  onAdd: (raw: string, source: InputSource, preParsed?: ParseResult[]) => void
   onEdit: (e: Expense) => void
   onBatchDelete?: (ids: string[]) => void
   onLoadSample?: () => void

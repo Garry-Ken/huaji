@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { AssetAccount, Expense, InputSource, Ledger } from './types'
+import type { AssetAccount, Expense, InputSource, Ledger, ParseResult } from './types'
 import { parseMultiExpense } from './lib/parser'
 import { load, persist, makeExpense, sortByTime, hasSeeded, markSeeded, uid, hasSampleFlag, setSampleFlag, clearSampleFlag, loadBudget, DEFAULT_LEDGER, loadLedgers, persistLedgers, loadAccounts, persistAccounts, softDelete } from './lib/storage'
 import { autoSync, syncDeleteToCloud, onSyncStatus } from './lib/sync'
@@ -116,8 +116,9 @@ export default function App() {
     return expenses.filter(e => e.ledgerId === activeLedgerId)
   }, [expenses, activeLedgerId])
 
-  const addFromText = (raw: string, source: InputSource) => {
-    const results = parseMultiExpense(raw)
+  const addFromText = (raw: string, source: InputSource, preParsed?: ParseResult[]) => {
+    // 优先用传入的解析结果（已含 AI 增强）；没有则本地规则解析
+    const results = preParsed && preParsed.length > 0 ? preParsed : parseMultiExpense(raw)
     const ledId = activeLedgerId !== 'default' ? activeLedgerId : undefined
     const newItems = results.map(p => makeExpense(p, raw, source, ledId))
     update([...newItems, ...expenses])

@@ -38,6 +38,18 @@ function chineseToArabic(text: string): string {
   })
 }
 
+// 阿拉伯数字 + 万/w/k/千 单位展开：3w/3万→30000, 3.5w→35000, 5k/5千→5000, 3万5→35000
+// 必须在 chineseToArabic 之前调用（否则 chineseToArabic 会把孤立的"万"误转成 10000）。
+function expandUnitNumbers(text: string): string {
+  return text
+    // "3万5" / "3万5千" 形式：万后紧跟个位数(隐含千)
+    .replace(/(\d+(?:\.\d+)?)\s*万\s*(\d)(?![\d.])/g, (_, a, b) => String(Math.round(parseFloat(a) * 10000 + parseInt(b, 10) * 1000)))
+    // "3万" / "3w" / "3.5万" → ×10000
+    .replace(/(\d+(?:\.\d+)?)\s*(?:万|[wW])(?![a-zA-Z])/g, (_, n) => String(Math.round(parseFloat(n) * 10000)))
+    // "5千" / "5k" / "1.2千" → ×1000
+    .replace(/(\d+(?:\.\d+)?)\s*(?:千|[kK])(?![a-zA-Z])/g, (_, n) => String(Math.round(parseFloat(n) * 1000)))
+}
+
 // ---------- 收入/支出检测 ----------
 // 优先级：支出方向 > 收入方向 > 支出关键词 > 收入关键词 > 默认支出
 //
@@ -279,7 +291,7 @@ const MEAL_HOUR: Record<MealType, number> = { breakfast: 8, lunch: 12, dinner: 1
 /** 解析入口：一句话 -> 结构化草稿 */
 export function parseExpense(rawText: string, now = new Date()): ParseResult {
   const text = normalize(rawText)
-  const numText = chineseToArabic(text)
+  const numText = chineseToArabic(expandUnitNumbers(text))
   const lower = text.toLowerCase()
 
   const amount = extractAmount(numText)

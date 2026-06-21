@@ -12,7 +12,7 @@ import { speechSupported, createRecognizer, type Recognizer } from '../lib/speec
 const EXPENSE_EXAMPLES = ['中午公司楼下吃麻辣烫 28', '打车回家 35', '下午一杯奶茶 18', '淘宝买了件外套 299']
 const INCOME_EXAMPLES = ['发工资 8000', '收到退款 50', '兼职收入 500', '朋友还我 200']
 
-export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) => void }) {
+export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource, preParsed?: ParseResult[]) => void }) {
   const [text, setText] = useState('')
   const [interim, setInterim] = useState('')
   const [listening, setListening] = useState(false)
@@ -40,10 +40,19 @@ export function InputBar({ onAdd }: { onAdd: (raw: string, source: InputSource) 
     return () => { clearTimeout(timer); if (aiSeq.current === seq) setAiLoading(false) }
   }, [display, aiEnhance, isPro]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const commit = () => {
+  const commit = async () => {
     const raw = display.trim()
     if (!raw) return
-    onAdd(raw, source)
+    // 先规则解析；若开启 AI 增强则在保存前补跑一次 AI，保证「先规则、再 AI」落到记录上
+    let parsed: ParseResult[] | undefined = aiResults ?? undefined
+    if (!parsed && aiEnhance && isPro && localPreviews.length > 0) {
+      setAiLoading(true)
+      const enhanced = await aiEnhanceParse(raw, localPreviews)
+      setAiLoading(false)
+      parsed = enhanced ?? localPreviews
+    }
+    if (!parsed) parsed = localPreviews
+    onAdd(raw, source, parsed)
     setText('')
     setInterim('')
     setSource('text')

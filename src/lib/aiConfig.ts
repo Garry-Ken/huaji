@@ -19,10 +19,13 @@ export const AI_DEFAULTS: Omit<AiConfig, 'apiKey'> = {
 
 const KEY_MAP = { apiKey: 'ai_api_key', baseURL: 'ai_base_url', model: 'ai_model' } as const
 
+// 缓存带 TTL：店主在 web 端改了 key，其它端(含已打开的 app)最多 TTL 后自动拉到新值，无需重启
+const CACHE_TTL = 3 * 60 * 1000 // 3 分钟
 let cache: AiConfig | null = null
+let cachedAt = 0
 
 export async function loadAiConfig(force = false): Promise<AiConfig> {
-  if (cache && !force) return cache
+  if (cache && !force && Date.now() - cachedAt < CACHE_TTL) return cache
   try {
     const { data } = await supabase
       .from('app_config')
@@ -34,6 +37,7 @@ export async function loadAiConfig(force = false): Promise<AiConfig> {
       baseURL: map.get('ai_base_url') || AI_DEFAULTS.baseURL,
       model: map.get('ai_model') || AI_DEFAULTS.model,
     }
+    cachedAt = Date.now()
   } catch {
     cache = cache ?? { apiKey: '', ...AI_DEFAULTS }
   }
@@ -54,9 +58,11 @@ export async function saveAiConfig(cfg: Partial<AiConfig>): Promise<{ ok: boolea
     }
   }
   cache = null // 失效缓存，下次调用 AI 时重新拉取
+  cachedAt = 0
   return { ok: true, msg: 'AI 配置已保存' }
 }
 
 export function invalidateAiConfig() {
   cache = null
+  cachedAt = 0
 }
