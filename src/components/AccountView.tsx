@@ -17,7 +17,7 @@ const TIER_GRADIENTS: Record<string, string> = {
   ultra: 'linear-gradient(135deg,#af52de,#ff375f)',
 }
 
-const APP_VERSION = '0.4.8'
+const APP_VERSION = '0.4.9'
 
 function downloadCSV(expenses: Expense[]) {
   const head = ['类型', '消费时间', '录入时间', '分类', '名称', '金额', '地点', '商家', '餐次', '健康分', '原始输入']
@@ -53,7 +53,9 @@ export function AccountView({ expenses, onToast, onClearData, onReload, accounts
 
   const tierName = tier === 'ultra' ? 'Ultra' : tier === 'pro' ? 'Pro' : tier === 'plus' ? 'Plus' : null
   const statusMeta =
-    tier
+    isAdmin
+      ? { title: '店主 · Ultra', sub: '最高权限 · 无限使用', grad: TIER_GRADIENTS.ultra }
+    : tier
       ? { title: `${tierName} 会员`, sub: proExpiresAt ? `${planLabel(proPlan)} · 有效期至 ${new Date(proExpiresAt).toLocaleDateString('zh-CN')}` : tierName!, grad: TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.pro }
       : status === 'trial'
         ? { title: '试用中', sub: `Pro 功能免费体验 · 剩 ${daysLeft} 天`, grad: 'linear-gradient(135deg,#ff9f0a,#ff375f)' }

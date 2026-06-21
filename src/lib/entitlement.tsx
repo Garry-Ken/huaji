@@ -363,7 +363,8 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
     const trialEnds = local.trialStartedAt ? local.trialStartedAt + TRIAL_DAYS * DAY : 0
     const trialActive = trialEnds > now
     const serverActive = !!(serverEnt && serverEnt.expiresAt && serverEnt.expiresAt > now) || isAdmin
-    const activeTier: Tier | undefined = serverActive ? (serverEnt?.tier ?? 'pro') : undefined
+    // 店主恒为最高级 Ultra（无限使用），不需要兑换/开通
+    const activeTier: Tier | undefined = isAdmin ? 'ultra' : serverActive ? (serverEnt?.tier ?? 'pro') : undefined
     const status: Status = serverActive ? (activeTier ?? 'pro') : trialActive ? 'trial' : local.trialStartedAt ? 'expired' : 'free'
     const daysLeft = local.trialStartedAt ? Math.max(0, Math.ceil((trialEnds - now) / DAY)) : 0
     const tierRank = (t?: Tier) => t === 'ultra' ? 3 : t === 'pro' ? 2 : t === 'plus' ? 1 : 0
