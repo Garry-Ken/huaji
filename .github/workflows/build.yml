@@ -14,8 +14,20 @@ permissions:
   contents: write # 允许创建 Release 并上传安装包
 
 jobs:
+  # —— 回归测试（解析器等），不过则不出包 ——
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm test
+
   # —— 桌面：Mac (.dmg) + Windows (.exe) ——
   desktop:
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +51,7 @@ jobs:
 
   # —— 安卓 (.apk) ——
   android:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
